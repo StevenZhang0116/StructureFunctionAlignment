@@ -20,9 +20,11 @@ plt.style.use(['no-latex'])
 import sys
 sys.path.append("../")
 sys.path.append("../../")
+sys.path.append("../../../")
 import helper
-
 import activity_helper
+
+from netrep.metrics import LinearMetric
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
 
@@ -90,6 +92,8 @@ fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity.p
 # calculate activity correlation
 activity_correlation = np.corrcoef(activity_extraction, rowvar=True)
 fig, ax = plt.subplots(1,1,figsize=(6,6))
+# only take the upper triangular part (ignore the diagonal)
+# in case of plotting duplicated results
 dd = np.triu_indices_from(activity_correlation, k=1)
 upper_tri_values = activity_correlation[dd].flatten()
 median_corr = np.median(upper_tri_values)
@@ -98,7 +102,6 @@ ax.set_xlabel("Activity Correlation")
 ax.set_ylabel("Frequency/Count")
 ax.set_title(f"Median: {median_corr}")
 fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_acthist.png")
-
 
 W_all, totalSyn, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
 
@@ -115,11 +118,7 @@ for correlation_index in correlation_index_lst:
     if not external_data:
         W_corr = np.corrcoef(W, rowvar=False if correlation_index=="column" else True) 
     else:
-        # # something wrong with that...
-        # W_corr = np.fromfile(f'./corr_W_microns_{correlation_index}.dat', dtype=np.float64)
-        # W_corr = W_corr.reshape(int(np.sqrt(W_corr.shape[0])), int(np.sqrt(W_corr.shape[0])))
-        # W_corr = W_corr[np.ix_(selected_neurons, selected_neurons)]
-
+        # calculated correlation using weighted connectome
         if correlation_index == "row":
             W_trc = synCount[selected_neurons,:]
             W_corr = np.corrcoef(W_trc, rowvar=True)
@@ -232,10 +231,10 @@ activity_reconstruct_c = reconstruction(W_corr)
 
 # load embedding (hyp distance in hyp embedding)
 R_max = 1
-embedding_dimension = 2
+embedding_dimension = 4
 hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_hypdist.mat"
 hypembed_connectome_distance = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
-hypembed_connectome_corr = np.max(hypembed_connectome_distance) - hypembed_connectome_distance
+hypembed_connectome_corr = R_max - hypembed_connectome_distance
 np.fill_diagonal(hypembed_connectome_corr, 0)
 
 hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
@@ -247,43 +246,58 @@ np.fill_diagonal(eulembed_connectome_corr, 0)
 activity_reconstruct_c_hypembed = reconstruction(hypembed_connectome_corr)
 activity_reconstruct_c_eulembed = reconstruction(eulembed_connectome_corr)
 
+all_reconstruction = [activity_reconstruct_a, activity_reconstruct_c, activity_reconstruct_c_hypembed, activity_reconstruct_c_eulembed]
+reconstruction_names = ["Activity Correlation", "Connectome Correlation", f"Connectome Hyp D{embedding_dimension}R{R_max} Embed", f"Connectome Eul Embed"]
 
-timeuplst = [100,1000,10000]
+
+# Approach 
+timeuplst = [100,1000,10000,30000]
 ttlength = activity_extraction.shape[1]
+
+# Approach: temporal moving window to calculate correlation
 figact, axsact = plt.subplots(1,len(timeuplst),figsize=(6*len(timeuplst),6))
 axsact = np.atleast_1d(axsact)
+
+def vectorized_pearsonr(x, y):
+    """Compute Pearson correlation coefficient vectorized over the first axis."""
+    x_mean = x.mean(axis=1, keepdims=True)
+    y_mean = y.mean(axis=1, keepdims=True)
+    n = x.shape[1]
+    cov = np.sum((x - x_mean) * (y - y_mean), axis=1)
+    x_std = np.sqrt(np.sum((x - x_mean)**2, axis=1))
+    y_std = np.sqrt(np.sum((y - y_mean)**2, axis=1))
+    return cov / (x_std * y_std)
 
 for timeup in timeuplst:
     summ = []
     for i in range(activity_extraction.shape[0]):
-        summ_neuron = []
-        for start in range(ttlength-timeup-1):
-            print(f"Neuron {i} Start at {start}")
-            gt = activity_extraction[i,start:start+timeup]
-            gt_a = activity_reconstruct_a[i,start:start+timeup]
-            gt_c = activity_reconstruct_c[i,start:start+timeup]
-            gt_c_hypembed = activity_reconstruct_c_hypembed[i,start:start+timeup]
-            gt_c_eulembed = activity_reconstruct_c_eulembed[i,start:start+timeup]
+        print(i)
+        # Create a matrix of all windows for neuron i
+        gt = np.lib.stride_tricks.sliding_window_view(activity_extraction[i], window_shape=timeup)
+        gt_a = np.lib.stride_tricks.sliding_window_view(all_reconstruction[0][i], window_shape=timeup)
+        gt_c = np.lib.stride_tricks.sliding_window_view(all_reconstruction[1][i], window_shape=timeup)
+        gt_c_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction[2][i], window_shape=timeup)
+        gt_c_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction[3][i], window_shape=timeup)
 
-            corr_with_a, _ = pearsonr(gt, gt_a)
-            corr_with_c, _ = pearsonr(gt, gt_c)
-            corr_with_c_hypembed, _ = pearsonr(gt, gt_c_hypembed)
-            corr_with_c_eulembed, _ = pearsonr(gt, gt_c_eulembed)
+        # Calculate correlations in a vectorized manner
+        corr_with_a = vectorized_pearsonr(gt, gt_a)
+        corr_with_c = vectorized_pearsonr(gt, gt_c)
+        corr_with_c_hypembed = vectorized_pearsonr(gt, gt_c_hypembed)
+        corr_with_c_eulembed = vectorized_pearsonr(gt, gt_c_eulembed)
 
-            summ_neuron.append([corr_with_a, corr_with_c, corr_with_c_hypembed, corr_with_c_eulembed])
-        summ_neuron = np.array(summ_neuron)
-        summ.append(list(np.mean(summ_neuron, axis=0)))
+        # Calculate mean of correlations across all windows for neuron i
+        summ.append([corr_with_a.mean(), corr_with_c.mean(), corr_with_c_hypembed.mean(), corr_with_c_eulembed.mean()])
 
     summ = np.array(summ)
-    axsact[timeuplst.index(timeup)].hist(summ[:,0], bins=10, color=c_vals[0], alpha=0.7, label=f"Activity Reconstruction: {round(np.median(summ[:,0]),5)}")
-    axsact[timeuplst.index(timeup)].hist(summ[:,1], bins=10, color=c_vals[1], alpha=0.7, label=f"Connectome Reconstruction: {round(np.median(summ[:,1]),5)}")
-    axsact[timeuplst.index(timeup)].hist(summ[:,2], bins=10, color=c_vals[2], alpha=0.7, label=f"Connectome Hyp {embedding_dimension} Embedding Reconstruction: {round(np.median(summ[:,2]),5)}")
-    axsact[timeuplst.index(timeup)].hist(summ[:,3], bins=10, color=c_vals[3], alpha=0.7, label=f"Connectome Eul {embedding_dimension} Embedding Reconstruction: {round(np.median(summ[:,3]),5)}")
+    for j in range(4):  # Loop over different reconstructions
+        axsact[timeuplst.index(timeup)].hist(summ[:, j], bins=10, color=c_vals[j], alpha=0.7,
+                                             label=f"{reconstruction_names[j]}: {round(np.median(summ[:, j]), 5)}")
+        axsact[timeuplst.index(timeup)].legend()
 
-    axsact[timeuplst.index(timeup)].set_title(f"{timeup}")
+    axsact[timeuplst.index(timeup)].set_title(f"Window Length {timeup}")
 
 for ax in axsact:
     ax.legend()
-figact.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare.png")
+figact.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare_{embedding_dimension}.png")
 
 session_ds.close()
