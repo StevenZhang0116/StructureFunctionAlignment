@@ -12,6 +12,7 @@ import scipy
 from scipy.sparse import csr_matrix
 from scipy.linalg import subspace_angles
 from scipy.spatial.distance import pdist, squareform
+from scipy.signal import welch, coherence
 
 import scienceplots
 plt.style.use('science')
@@ -29,7 +30,7 @@ from netrep.metrics import LinearMetric
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
 
 # index
-session_info, scan_info = 8, 5
+session_info, scan_info = 9, 4
 metric_compare = "correlation"
 sub_correlation_index = "nan_fill"
 
@@ -40,12 +41,14 @@ prf_coreg = prf_coreg[(prf_coreg["session"] == session_info) & (prf_coreg["scan_
 print(len(prf_coreg))
 
 # read in microns cell/synapse information
-cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240524.feather")
+cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
 # cell_table = cell_table.sort_values(by='cell_type')
 synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
 
 save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
 session_ds = xr.open_dataset(save_filename)
+
+fps_value = session_ds.attrs.get("fps", None)
 
 selected_neurons = []
 neuron_types = []
@@ -82,15 +85,19 @@ assert len(selected_neurons) == len(activity_extraction)
 activity_extraction = np.array(activity_extraction)
 activity_extraction_extra = np.array(activity_extraction_extra)
 
+
 # plot activity trace
-fig, ax = plt.subplots(1,2,figsize=(2*6,6))
-for i in range(0,10):
-    ax[0].plot(activity_extraction[i,:])
-    ax[1].plot(activity_extraction_extra[i,:])
+fig, axs = plt.subplots(1,2,figsize=(2*6,6))
+for i in range(0,5):
+    axs[0].plot(activity_extraction[i,0:100], label=f"Neuron {i}")
+    axs[1].plot(activity_extraction_extra[i,0:100], label=f"Neuron {i}")
+for ax in axs:
+    ax.legend()
+    ax.set_xlabel("# Datapoints")
 fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity.png")
 
 # calculate activity correlation
-activity_correlation = np.corrcoef(activity_extraction, rowvar=True)
+activity_correlation = np.corrcoef(activity_extraction_extra, rowvar=True)
 fig, ax = plt.subplots(1,1,figsize=(6,6))
 # only take the upper triangular part (ignore the diagonal)
 # in case of plotting duplicated results
@@ -216,46 +223,89 @@ fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_heatmap.pn
 fig_dist.tight_layout()
 fig_dist.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_dist.png")
 
-def reconstruction(W):
-    row_sums_a = np.sum(W, axis=1)
-    activity_correlation_normalized = W / row_sums_a[:, np.newaxis]
-    activity_reconstruct_a = activity_correlation_normalized @ activity_extraction
-    return activity_reconstruct_a
+def reconstruction(W, K=None):
+    """
+    add option to only take top K components in reconstruction
+    if K=None, then using all neurons (without any low-pass filter)
+    """
+    if K is None:
+        K = W.shape[0]
+
+    print(f"K: {K}")
+
+    filtered_matrix = np.zeros_like(W)
+    for i in range(W.shape[0]):
+        top_k_indices = np.argsort(W[i])[-K:]        
+        filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
     
-
-# reconstruction using correlation with other neuron's activity
-activity_reconstruct_a = reconstruction(activity_correlation)
-
-# reconstruction using correlation with other neuron's connectome
-activity_reconstruct_c = reconstruction(W_corr)
+    row_sums_a = np.sum(filtered_matrix, axis=1)
+    activity_correlation_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
+    activity_reconstruct_a = activity_correlation_normalized @ activity_extraction_extra
+    return activity_reconstruct_a
 
 # load embedding (hyp distance in hyp embedding)
 R_max = 1
-embedding_dimension = 4
+embedding_dimension = 2
 hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_hypdist.mat"
 hypembed_connectome_distance = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
 hypembed_connectome_corr = R_max - hypembed_connectome_distance
 np.fill_diagonal(hypembed_connectome_corr, 0)
 
+# load Euclidean embedding coordinate
+# calcualate the pairwise Euclidean distance afterward
 hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
 eulembed_connectome = scipy.io.loadmat(hypembed_name)['eulmdsembed'][0][1]
 eulembed_connectome_distance = squareform(pdist(eulembed_connectome, metric='euclidean'))
 eulembed_connectome_corr = np.max(eulembed_connectome_distance) - eulembed_connectome_distance
 np.fill_diagonal(eulembed_connectome_corr, 0)
 
-activity_reconstruct_c_hypembed = reconstruction(hypembed_connectome_corr)
-activity_reconstruct_c_eulembed = reconstruction(eulembed_connectome_corr)
+input_matrices = [activity_correlation, W_corrs[0], W_corrs[1], hypembed_connectome_corr, eulembed_connectome_corr]
 
-all_reconstruction = [activity_reconstruct_a, activity_reconstruct_c, activity_reconstruct_c_hypembed, activity_reconstruct_c_eulembed]
-reconstruction_names = ["Activity Correlation", "Connectome Correlation", f"Connectome Hyp D{embedding_dimension}R{R_max} Embed", f"Connectome Eul Embed"]
+# Top K neurons of consideration
+topK_values = [None, int(W_corr.shape[0]/2)]
+print(f"topK_values: {topK_values}")
 
+# collection of all categories of reconstruction
+all_reconstruction_data = [
+    [reconstruction(W, K) for W in input_matrices] 
+    for K in topK_values
+]
+
+reconstruction_names = ["Activity Correlation", "Connectome-In Correlation", "Connectome-Out Correlation", \
+                        f"Connectome Hyp D{embedding_dimension}R{R_max} Embed", f"Connectome Eul Embed"]
+
+# PSD
+def compute_psd(trace, fs):
+    freqs, psd = welch(trace, fs, nperseg=1024)
+    return freqs, psd
+
+fs = fps_value
+
+select_neuron = [0,5,20,30,40]
+timecut = 100
+figtest, axtest = plt.subplots(2,len(select_neuron), figsize=(4*len(select_neuron),4*2))
+
+for nn in select_neuron:
+    freqs_ground_truth, psd_ground_truth = compute_psd(activity_extraction_extra[nn,0:timecut], fs)
+    axtest[0,select_neuron.index(nn)].plot(freqs_ground_truth, psd_ground_truth, c=c_vals[0], label='GroundTruth')
+    axtest[1,select_neuron.index(nn)].plot(activity_extraction_extra[nn,0:timecut], c=c_vals[0], label='GroundTruth')
+    all_reconstruction = all_reconstruction_data[0]
+    for j in range(len(all_reconstruction)):
+        freqs_reconstructed, psd_reconstructed = compute_psd(all_reconstruction[j][nn,0:timecut], fs)
+        axtest[0,select_neuron.index(nn)].plot(freqs_reconstructed, psd_reconstructed, c=c_vals[j+1], label=reconstruction_names[j], linestyle='--')
+        axtest[0,select_neuron.index(nn)].set_title(f"Neuron {nn}")
+        axtest[1,select_neuron.index(nn)].plot(all_reconstruction[j][nn,0:timecut], c=c_vals[j+1], label=reconstruction_names[j], linestyle='--')
+for ax in axtest.flatten():
+    ax.legend()
+figtest.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_test.png")
 
 # Approach 
-timeuplst = [100,1000,10000,30000]
-ttlength = activity_extraction.shape[1]
+timeuplst = [100,1000,10000,30000, 39999]
+ttlength = activity_extraction_extra.shape[1]
 
 # Approach: temporal moving window to calculate correlation
-figact, axsact = plt.subplots(1,len(timeuplst),figsize=(6*len(timeuplst),6))
+KK = len(all_reconstruction_data)
+figact, axsact = plt.subplots(KK,len(timeuplst),figsize=(6*len(timeuplst),6*KK))
 axsact = np.atleast_1d(axsact)
 
 def vectorized_pearsonr(x, y):
@@ -268,35 +318,38 @@ def vectorized_pearsonr(x, y):
     y_std = np.sqrt(np.sum((y - y_mean)**2, axis=1))
     return cov / (x_std * y_std)
 
-for timeup in timeuplst:
-    summ = []
-    for i in range(activity_extraction.shape[0]):
-        print(i)
-        # Create a matrix of all windows for neuron i
-        gt = np.lib.stride_tricks.sliding_window_view(activity_extraction[i], window_shape=timeup)
-        gt_a = np.lib.stride_tricks.sliding_window_view(all_reconstruction[0][i], window_shape=timeup)
-        gt_c = np.lib.stride_tricks.sliding_window_view(all_reconstruction[1][i], window_shape=timeup)
-        gt_c_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction[2][i], window_shape=timeup)
-        gt_c_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction[3][i], window_shape=timeup)
+for k in range(KK):
+    for timeup in timeuplst:
+        summ = []
+        for i in range(activity_extraction_extra.shape[0]):
+            print(i)
+            # Create a matrix of all windows for neuron i
+            gt = np.lib.stride_tricks.sliding_window_view(activity_extraction_extra[i], window_shape=timeup)
+            gt_a = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][0][i], window_shape=timeup)
+            gt_c1 = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][1][i], window_shape=timeup)
+            gt_c2 = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][2][i], window_shape=timeup)
+            gt_c_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][3][i], window_shape=timeup)
+            gt_c_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][4][i], window_shape=timeup)
 
-        # Calculate correlations in a vectorized manner
-        corr_with_a = vectorized_pearsonr(gt, gt_a)
-        corr_with_c = vectorized_pearsonr(gt, gt_c)
-        corr_with_c_hypembed = vectorized_pearsonr(gt, gt_c_hypembed)
-        corr_with_c_eulembed = vectorized_pearsonr(gt, gt_c_eulembed)
+            # Calculate correlations in a vectorized manner
+            corr_with_a = vectorized_pearsonr(gt, gt_a)
+            corr_with_c1 = vectorized_pearsonr(gt, gt_c1)
+            corr_with_c2 = vectorized_pearsonr(gt, gt_c2)
+            corr_with_c_hypembed = vectorized_pearsonr(gt, gt_c_hypembed)
+            corr_with_c_eulembed = vectorized_pearsonr(gt, gt_c_eulembed)
 
-        # Calculate mean of correlations across all windows for neuron i
-        summ.append([corr_with_a.mean(), corr_with_c.mean(), corr_with_c_hypembed.mean(), corr_with_c_eulembed.mean()])
+            # Calculate mean of correlations across all windows for neuron i
+            summ.append([corr_with_a.mean(), corr_with_c1.mean(), corr_with_c2.mean(), corr_with_c_hypembed.mean(), corr_with_c_eulembed.mean()])
 
-    summ = np.array(summ)
-    for j in range(4):  # Loop over different reconstructions
-        axsact[timeuplst.index(timeup)].hist(summ[:, j], bins=10, color=c_vals[j], alpha=0.7,
-                                             label=f"{reconstruction_names[j]}: {round(np.median(summ[:, j]), 5)}")
-        axsact[timeuplst.index(timeup)].legend()
+        summ = np.array(summ)
+        for j in range(len(input_matrices)):  
+            axsact[k,timeuplst.index(timeup)].hist(summ[:, j], bins=10, color=c_vals[j], alpha=0.7,
+                                                label=f"{reconstruction_names[j]}: {round(np.median(summ[:, j]), 5)}")
+            axsact[k,timeuplst.index(timeup)].legend()
 
-    axsact[timeuplst.index(timeup)].set_title(f"Window Length {timeup}")
+        axsact[k,timeuplst.index(timeup)].set_title(f"Window Length {timeup}: K{topK_values[k]}")
 
-for ax in axsact:
+for ax in axsact.flatten():
     ax.legend()
 figact.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare_{embedding_dimension}.png")
 
