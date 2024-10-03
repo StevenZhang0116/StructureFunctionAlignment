@@ -112,7 +112,9 @@ def test_diagonal_significance(matrix):
     
     mean_diagonal = np.mean(diagonal)
     mean_off_diagonal = np.mean(off_diagonal)
+    # t_stat, p_value = stats.ttest_1samp(diagonal, mean_off_diagonal)
 
-    t_stat, p_value = stats.ttest_1samp(diagonal, mean_off_diagonal)
+    t_stat, p_value = stats.ttest_ind(diagonal, off_diagonal, equal_var=False)
+    p_value = p_value / 2 if t_stat > 0 else 1 - p_value / 2
     
     return mean_diagonal, mean_off_diagonal, t_stat, p_value
