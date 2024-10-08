@@ -25,6 +25,8 @@ print(pkl_files)
 coldata, rowdata, somadata = [], [], []
 
 timeselect = "all"
+# if 0, using all neurons; if 1, using half neurons
+Kselect = 1
 
 for pkl_file_path in pkl_files:
     with open(pkl_file_path, 'rb') as file:
@@ -40,7 +42,7 @@ for pkl_file_path in pkl_files:
     num_neurons = data["num_neurons"]
     column_primary_angle = np.mean(data["column_angle"][0:cc])
     row_primary_angle = np.mean(data["row_angle"][0:cc])
-    allk_medians = data["allk_medians"][0][ttind]
+    allk_medians = data["allk_medians"][Kselect][ttind]
     column_explainratio = allk_medians[1]/allk_medians[0]
     row_explainratio = allk_medians[4]/allk_medians[0]
 
@@ -64,7 +66,7 @@ figexp, axexp = plt.subplots(figsize=(4,4))
 indices = [[0,1,2,6],[3,4,5,6]]
 
 for i in range(len(alldata)):
-    kk = 0 
+    kk = 0
     xx, yy = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
     slope, intercept, r_value, p_value, std_err = stats.linregress(xx, yy)
     print(f"p_value: {p_value}")
@@ -91,12 +93,13 @@ for i in range(len(alldata)):
 
 
 fig.tight_layout()
-fig.savefig(f"./output/zz_overall_T{timeselect}.png")
+fig.savefig(f"./output/zz_overall_T{timeselect}_K{Kselect}.png")
 
 
 names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act", "Soma2Act"]
 axexp.set_xticks(range(len(names))) 
 axexp.set_xticklabels(names, rotation=45, ha='right')
+axexp.axhline(1, c='red', linestyle='--')
 
 axexp.set_ylabel("Explanation Ratio")
-figexp.savefig(f"./output/zz_overall_exp_T{timeselect}.png")
+figexp.savefig(f"./output/zz_overall_exp_T{timeselect}_K{Kselect}.png")

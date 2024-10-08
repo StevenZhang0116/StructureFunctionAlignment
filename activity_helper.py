@@ -5,6 +5,7 @@ from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 import time
 
+
 def pearson_correlation_with_nans(arr1, arr2):
     """
     Calculate the Pearson correlation for two arrays where each array has exactly one NaN.
@@ -74,7 +75,7 @@ def sanity_check_W(truncated_W_correlation, activity_correlation):
     truncated_W_correlation = np.delete(truncated_W_correlation, indices_to_delete, axis=0)
     truncated_W_correlation = np.delete(truncated_W_correlation, indices_to_delete, axis=1)
 
-    return truncated_W_correlation, activity_correlation
+    return truncated_W_correlation, activity_correlation, indices_to_delete
 
 
 def angles_between_flats(v_lst, u_lst):
