@@ -24,6 +24,8 @@ print(pkl_files)
 
 coldata, rowdata, somadata = [], [], []
 
+gt_median_corrs = []
+
 timeselect = "all"
 # if 0, using all neurons; if 1, using half neurons
 Kselect = 1
@@ -39,6 +41,8 @@ for pkl_file_path in pkl_files:
 
     cc = 1
 
+    # gt_median_corrs.append(data["gt_median_corr"])
+
     num_neurons = data["num_neurons"]
     column_primary_angle = np.mean(data["column_angle"][0:cc])
     row_primary_angle = np.mean(data["row_angle"][0:cc])
@@ -47,6 +51,7 @@ for pkl_file_path in pkl_files:
     row_explainratio = allk_medians[4]/allk_medians[0]
 
     soma_explainratio = allk_medians[7]/allk_medians[0]
+
 
     in_hyp_ratio = allk_medians[2]/allk_medians[1]
     in_eul_ratio = allk_medians[3]/allk_medians[1]
@@ -61,7 +66,7 @@ alldata = [coldata, rowdata]
 allmarks = ["In-Correlation", "Out-Correlation"]
 
 fig, axs = plt.subplots(1,2,figsize=(4*2,4))
-figexp, axexp = plt.subplots(figsize=(4,4))
+figexp, axexp = plt.subplots(1,1,figsize=(4,4))
 
 indices = [[0,1,2,6],[3,4,5,6]]
 

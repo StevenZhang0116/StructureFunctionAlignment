@@ -141,12 +141,14 @@ def run(session_info, scan_info, for_construction):
     # in case of plotting duplicated results
     dd = np.triu_indices_from(activity_correlation_all, k=1)
     upper_tri_values = activity_correlation_all[dd].flatten()
-    median_corr = np.median(upper_tri_values)
+    gt_median_corr = np.median(upper_tri_values)
     ax.hist(upper_tri_values, bins=100)
     ax.set_xlabel("Activity Correlation")
     ax.set_ylabel("Frequency/Count")
-    ax.set_title(f"Median: {np.round(median_corr,3)}")
+    ax.set_title(f"Median: {np.round(gt_median_corr,3)}")
     fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_acthist.png")
+
+    metadata["gt_median_corr"] = gt_median_corr
 
     W_all, totalSyn, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
 
@@ -329,7 +331,7 @@ def run(session_info, scan_info, for_construction):
                 top_k_indices = np.argsort(W[i])[-K:]        
                 filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
             
-            row_sums_a = np.sum(filtered_matrix, axis=1)
+            row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
             filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
             assert np.sum(np.diag(filtered_matrix_normalized)) == 0
             activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
@@ -349,7 +351,7 @@ def run(session_info, scan_info, for_construction):
             figoffcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare.png")
 
         # load embedding (hyp distance in hyp embedding)
-        R_max = "1"
+        R_max = "5.000000e-01"
         embedding_dimension = 2
         
         hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
@@ -366,13 +368,13 @@ def run(session_info, scan_info, for_construction):
 
         hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_hypdist.mat"
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
-        # hypembed_connectome_corr_out = int(R_max) - hypembed_connectome_distance_out
-        hypembed_connectome_corr_out = np.median(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
+        hypembed_connectome_corr_out = int(R_max) - hypembed_connectome_distance_out
+        # hypembed_connectome_corr_out = np.median(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
         np.fill_diagonal(hypembed_connectome_corr_out, 0)
 
         hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][2]
-        # hypembed_connectome_corr_in = int(R_max) - hypembed_connectome_distance_in
-        hypembed_connectome_corr_in = np.median(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
+        hypembed_connectome_corr_in = int(R_max) - hypembed_connectome_distance_in
+        # hypembed_connectome_corr_in = np.median(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
         np.fill_diagonal(hypembed_connectome_corr_in, 0)
 
         # load Euclidean embedding coordinate
@@ -381,16 +383,19 @@ def run(session_info, scan_info, for_construction):
         eulembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][1]
         eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome, metric='euclidean'))
-        eulembed_connectome_corr_out = np.median(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
+        eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) / 2 - eulembed_connectome_distance_out
+        # eulembed_connectome_corr_out = np.median(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
         np.fill_diagonal(eulembed_connectome_corr_out, 0)
 
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][2]
         eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome, metric='euclidean'))
-        eulembed_connectome_corr_in = np.median(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
+        eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) / 2 - eulembed_connectome_distance_in
+        # eulembed_connectome_corr_in = np.median(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
         np.fill_diagonal(eulembed_connectome_corr_in, 0)
 
         # soma distance (baseline)
-        soma_distances = np.median(soma_distances_trc) - soma_distances_trc
+        soma_distances = np.max(soma_distances_trc) / 2 - soma_distances_trc
+        # soma_distances = np.median(soma_distances_trc) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
 
         input_matrices = [activity_correlation_all_trc, \
@@ -611,6 +616,7 @@ def run(session_info, scan_info, for_construction):
 
         metadata["timeuplst"] = timeuplst
         metadata["allk_medians"] = allk_medians
+        
 
 
 
