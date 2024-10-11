@@ -351,8 +351,8 @@ def run(session_info, scan_info, for_construction):
             figoffcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare.png")
 
         # load embedding (hyp distance in hyp embedding)
-        R_max = "5.000000e-01"
-        embedding_dimension = 2
+        R_max = "7.000000e-01"
+        embedding_dimension = 3
         
         hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
         out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][1]
@@ -362,19 +362,37 @@ def run(session_info, scan_info, for_construction):
         in_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][2]
         in_corr = 1 - in_corr
         np.fill_diagonal(in_corr, 0)
+        
+        # sanity check
+        np.allclose(out_corr, W_corrs_all_trc[1], rtol=1e-05, atol=1e-08) 
+        np.allclose(in_corr, W_corrs_all_trc[0], rtol=1e-05, atol=1e-08) 
 
-        np.allclose(out_corr, W_corrs_all_trc[1], rtol=1e-05, atol=1e-08) # sanity check
-        np.allclose(in_corr, W_corrs_all_trc[0], rtol=1e-05, atol=1e-08) # sanity chec
+        def find_quantile(matrix, value):
+            flattened = np.sort(matrix.flatten())            
+            rank = np.searchsorted(flattened, value, side='right')            
+            quantile = rank / len(flattened)
+            return quantile
+
+        def find_value_for_quantile(matrix, quantile):
+            flattened = np.sort(matrix.flatten())            
+            index = int(np.clip(quantile * len(flattened), 0, len(flattened) - 1))            
+            return flattened[index]
 
         hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_hypdist.mat"
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
-        hypembed_connectome_corr_out = int(R_max) - hypembed_connectome_distance_out
-        # hypembed_connectome_corr_out = np.median(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
+
+        rmax_quantile_out = find_quantile(hypembed_connectome_distance_out, float(R_max))
+        metadata["rmax_quantile_out"] = rmax_quantile_out
+
+        hypembed_connectome_corr_out = float(R_max) - hypembed_connectome_distance_out
         np.fill_diagonal(hypembed_connectome_corr_out, 0)
 
         hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][2]
-        hypembed_connectome_corr_in = int(R_max) - hypembed_connectome_distance_in
-        # hypembed_connectome_corr_in = np.median(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
+
+        rmax_quantile_in = find_quantile(hypembed_connectome_distance_in, float(R_max))
+        metadata["rmax_quantile_in"] = rmax_quantile_in
+
+        hypembed_connectome_corr_in = float(R_max) - hypembed_connectome_distance_in
         np.fill_diagonal(hypembed_connectome_corr_in, 0)
 
         # load Euclidean embedding coordinate
@@ -383,19 +401,18 @@ def run(session_info, scan_info, for_construction):
         eulembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][1]
         eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome, metric='euclidean'))
-        eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) / 2 - eulembed_connectome_distance_out
-        # eulembed_connectome_corr_out = np.median(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
+        # 
+        eulembed_connectome_corr_out = find_value_for_quantile(eulembed_connectome_distance_out, rmax_quantile_out) - eulembed_connectome_distance_out
         np.fill_diagonal(eulembed_connectome_corr_out, 0)
 
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][2]
         eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome, metric='euclidean'))
-        eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) / 2 - eulembed_connectome_distance_in
-        # eulembed_connectome_corr_in = np.median(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
+        # 
+        eulembed_connectome_corr_in = find_value_for_quantile(eulembed_connectome_distance_in, rmax_quantile_in) - eulembed_connectome_distance_in
         np.fill_diagonal(eulembed_connectome_corr_in, 0)
 
         # soma distance (baseline)
-        soma_distances = np.max(soma_distances_trc) / 2 - soma_distances_trc
-        # soma_distances = np.median(soma_distances_trc) - soma_distances_trc
+        soma_distances_trc = find_value_for_quantile(soma_distances_trc, np.mean([rmax_quantile_in, rmax_quantile_out])) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
 
         input_matrices = [activity_correlation_all_trc, \
@@ -461,7 +478,7 @@ def run(session_info, scan_info, for_construction):
             axcheck[j].set_xlim([min(upper_tri_values)-padding, max(upper_tri_values)+padding])
             axcheck[j].set_title(reconstruction_names[j])
 
-        figcheck.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_checkcorr.png")
+        figcheck.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_checkcorr_D{embedding_dimension}_R{R_max}.png")
 
 
         # PSD
