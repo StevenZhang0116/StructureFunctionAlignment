@@ -8,6 +8,7 @@ import xarray as xr
 from scipy.stats import pearsonr
 import dask.array as da
 import pickle
+import gc
 
 import scipy
 from scipy import stats
@@ -32,7 +33,7 @@ from netrep.metrics import LinearMetric
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
 
-def run(session_info, scan_info, for_construction):
+def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data):
 
     metadata = {}
 
@@ -119,6 +120,10 @@ def run(session_info, scan_info, for_construction):
 
     activity_extraction = np.array(activity_extraction)
     activity_extraction_extra = np.array(activity_extraction_extra)
+
+    # whether to use deconvolved data or raw data
+    if raw_data:
+        activity_extraction_extra = activity_extraction
 
     select_neurons_df = cell_table.loc[selected_neurons]
     soma_locations = select_neurons_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
@@ -350,9 +355,9 @@ def run(session_info, scan_info, for_construction):
             axoffcompare.legend()
             figoffcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare.png")
 
-        # load embedding (hyp distance in hyp embedding)
-        R_max = "7.000000e-01"
-        embedding_dimension = 3
+        # # load embedding (hyp distance in hyp embedding)
+        # R_max = "7.000000e-01"
+        # embedding_dimension = 3
         
         hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
         out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][1]
@@ -479,7 +484,6 @@ def run(session_info, scan_info, for_construction):
             axcheck[j].set_title(reconstruction_names[j])
 
         figcheck.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_checkcorr_D{embedding_dimension}_R{R_max}.png")
-
 
         # PSD
         def compute_psd(trace, fs):
@@ -635,19 +639,17 @@ def run(session_info, scan_info, for_construction):
         metadata["allk_medians"] = allk_medians
         
 
-
-
         with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()
 
-def all_run():
+def all_run(R_max, embedding_dimension, raw_data):
     session_scan = [[4,7],[5,6],[5,7],[6,2],[6,4],[6,6],[7,4],[8,5],[9,3],[9,4]]
     for_construction = 1
     for ss in session_scan:
-        run(ss[0], ss[1], for_construction)
+        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)
+        gc.collect()
 
-
-if __name__ == "__main__":
-    all_run()
+    gc.collect()
+    
