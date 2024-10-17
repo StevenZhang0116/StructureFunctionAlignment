@@ -10,7 +10,7 @@ plt.style.use(['no-latex'])
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
 
-def microns_parameter_search(dimension):
+def microns_parameter_search(dimension, Kselect):
     
     def extract_R_value(file_name):
         match = re.search(r'_R([0-9\.e\+\-]+)_Tall', file_name)
@@ -20,7 +20,7 @@ def microns_parameter_search(dimension):
 
     directory = "./output/"
 
-    npz_files = [file for file in glob.glob(os.path.join(directory, "*.npz")) if f"D{dimension}" in os.path.basename(file)]
+    npz_files = [file for file in glob.glob(os.path.join(directory, "*.npz")) if f"D{dimension}" in os.path.basename(file) and f"K{Kselect}" in os.path.basename(file)]
     r_files_pairs = [(float(extract_R_value(file)), file) for file in npz_files]
     r_files_pairs.sort(key=lambda pair: pair[0])
     r_values, npz_files = zip(*r_files_pairs)
@@ -59,5 +59,5 @@ def microns_parameter_search(dimension):
     axscomparer[1].set_title("HypOut")
 
     figcomparer.tight_layout()
-    figcomparer.savefig(f"./zz_Rmax_D{dimension}_scan.png")
+    figcomparer.savefig(f"./zz_Rmax_D{dimension}_scan_K{Kselect}.png")
 

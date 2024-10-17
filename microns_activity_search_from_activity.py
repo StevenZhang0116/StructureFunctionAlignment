@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import xarray as xr
 from scipy.stats import pearsonr
-import dask.array as da
 import pickle
 import gc
+import random
 
 import scipy
 from scipy import stats
@@ -32,6 +32,10 @@ import activity_helper
 from netrep.metrics import LinearMetric
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
+c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
+
+def float_to_scientific(value, n=4):
+    return f"{value:.{n}e}"
 
 def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data):
 
@@ -68,31 +72,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     activity_extraction = []
     activity_extraction_extra = []
 
-    # for index, prf_coreg_id in enumerate(prf_coreg["pt_root_id"]):
-    #     if prf_coreg_id in set(cell_table["pt_root_id"]):
-    #         matching_indices = cell_table.index[cell_table["pt_root_id"] == prf_coreg_id].tolist()
-    #         matching_row = prf_coreg[prf_coreg["pt_root_id"] == prf_coreg_id]
-
-    #         # only take one neuron if there are multiple filtered results
-    #         if len(matching_row) > 1:
-    #             matching_row = matching_row.iloc[0]
-    #             matching_indices = [matching_indices[0]]
-            
-    #         if matching_indices[0] not in selected_neurons:
-    #             neuron_types.append(cell_table.iloc[matching_indices]["cell_type"].item())
-    #             selected_neurons.extend(matching_indices)
-
-    #             unit_id, field = matching_row["unit_id"].item(), matching_row["field"].item()
-    #             # unit_id ordered sequentially
-    #             check_unitid = session_ds["unit_id"].values[unit_id-1]
-    #             check_field = session_ds["field"].values[unit_id-1]
-    #             # to confirm unitid-1 is the correct searching index
-    #             assert unit_id == check_unitid
-    #             assert field == check_field
-
-    #             activity_extraction.append(session_ds["fluorescence"].values[unit_id-1,:])
-    #             activity_extraction_extra.append(session_ds["activity"].values[unit_id-1,:])
-
     for index, pr_root_id in enumerate(cell_table["pt_root_id"]):
         if pr_root_id in prf_coreg_ids:
             cell_row = cell_table[cell_table["pt_root_id"] == pr_root_id]
@@ -125,8 +104,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     if raw_data:
         activity_extraction_extra = activity_extraction
 
-    select_neurons_df = cell_table.loc[selected_neurons]
-    soma_locations = select_neurons_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
+    selectss_df = cell_table.loc[selected_neurons]
+    soma_locations = selectss_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
     soma_distances = squareform(pdist(soma_locations, metric='euclidean'))
     # print(np.median(soma_distances.reshape(-1,1)))
     # time.sleep(10000)
@@ -136,6 +115,17 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     tcmap = LinearSegmentedColormap.from_list('custom_cmap', ['white', 'blue'])
     sns.heatmap(activity_extraction_extra, ax=axs, cbar=True, square=False, cmap=tcmap)
     fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity.png")
+
+    selects = [1,12,18,25,32,36]
+    ttt = activity_extraction_extra.shape[1]
+    timecut = int(ttt/100)
+    fignewact, axsnewact = plt.subplots(len(selects),1,figsize=(10,len(selects)*1))
+    for ni in selects:
+        axsnewact[selects.index(ni)].plot(activity_extraction_extra[ni,:timecut], c=c_vals[selects.index(ni)])
+        axsnewact[selects.index(ni)].set_title(f"Neuron {ni}")
+        axsnewact[selects.index(ni)].set_xlim([-2, timecut+2])
+    fignewact.tight_layout()
+    fignewact.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity_new.png")
 
     # calculate activity correlation
     activity_correlation_all = np.corrcoef(activity_extraction_extra, rowvar=True)
@@ -160,10 +150,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(f"Original selected_neurons: {len(selected_neurons)}")
 
     correlation_index_lst = ["column", "row"]
-    W_corrs_all, diags, W_samples, indices_delete_lst = [], [], [], []
+    W_corrs_all, diags, offdiags, W_samples, indices_delete_lst = [], [], [], [], []
+    p_values_all = []
 
     fig, axs = plt.subplots(2,4,figsize=(4*4,4*2))
-    fig_dist, ax_dist = plt.subplots(2,2,figsize=(4*2,4*2))
+    fig_dist, ax_dist = plt.subplots(1,3,figsize=(4*3,4*1))
 
     for correlation_index in correlation_index_lst:
         corrind = correlation_index_lst.index(correlation_index)
@@ -235,18 +226,22 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         print(f"Mean Diagonal: {mean_diagonal}, Mean Off-Diagonal: {mean_off_diagonal}")
         print(f"T-statistic: {t_stat}, P-value: {p_value}")
 
-        diagonal = np.diag(relation_matrix)
-        diags.append(diagonal)
+        p_values_all.append(p_value)
 
+        diagonal = np.diag(relation_matrix)
+        
         i, j = np.indices(relation_matrix.shape)
         off_diagonal = relation_matrix[i != j]   
 
-        ax_dist[0,corrind].hist(diagonal, bins=20, alpha=0.7, label='Diagonal Elements', color='blue', density=True)
-        ax_dist[0,corrind].hist(off_diagonal, bins=20, alpha=0.7, label='Off-Diagonal Elements', color='red', density=True)
-        ax_dist[0,corrind].set_title(f"p-value: {p_value} - {correlation_index}")
-        ax_dist[0,corrind].set_xlabel('Value')
-        ax_dist[0,corrind].set_ylabel('Frequency')
-        ax_dist[0,corrind].legend()
+        diags.append(diagonal)
+        offdiags.append(off_diagonal)
+
+        ax_dist[corrind].hist(diagonal, bins=20, alpha=0.7, label='Diagonal Elements', color=c_vals[1], density=True)
+        ax_dist[corrind].hist(off_diagonal, bins=20, alpha=0.7, label='Off-Diagonal Elements', color=c_vals[0], density=True)
+        ax_dist[corrind].set_title(f"p-value: {float_to_scientific(p_value)} - {correlation_index}")
+        ax_dist[corrind].set_xlabel('Value')
+        ax_dist[corrind].set_ylabel('Frequency')
+        ax_dist[corrind].legend()
 
         # subspace angle analysis
         # here we refill the diagonal to be 0 (instead of nan/inf as previous)
@@ -254,27 +249,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         np.fill_diagonal(W_corr_all, 0)
         W_corrs_all.append(W_corr_all)
         np.fill_diagonal(activity_correlation,0)
-        U_connectome, S_connectome, Vh_connectome = np.linalg.svd(W_corr)
-        U_activity, S_activity, Vh_activity = np.linalg.svd(activity_correlation)
 
-        dim_loader, angle_loader = [], []
-        for num_dimension in range(1,20):
-            U_comps_activity = [U_activity[:,i] for i in range(num_dimension)]
-            U_comps_connectome = [U_connectome[:,i] for i in range(num_dimension)]
-            angle_in_bewteen = activity_helper.angles_between_flats(U_comps_activity, U_comps_connectome)
-            dim_loader.append(num_dimension)
-            angle_loader.append(angle_in_bewteen)
+        dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr, activity_correlation)
 
-        ax_dist[1,corrind].plot(dim_loader, angle_loader, "-o")
-        ax_dist[1,corrind].set_xlabel("Dimensionality")
-        ax_dist[1,corrind].set_ylabel("Angle")
+        ax_dist[2].plot(dim_loader, angle_loader, "-o", label=f"{correlation_index}")
+        ax_dist[2].set_xlabel("Dimensionality")
+        ax_dist[2].set_ylabel("Angle")
 
         metadata[f"{correlation_index}_angle"] = angle_loader
 
     fig.tight_layout()
     fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_heatmap.png")
+    ax_dist[2].legend()
     fig_dist.tight_layout()
     fig_dist.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_dist.png")
+
 
     def merge_arrays(arrays):
         union_result = arrays[0]    
@@ -337,27 +326,43 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
             
             row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
+            # row_sums_a = np.sum(filtered_matrix, axis=1)
             filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
             assert np.sum(np.diag(filtered_matrix_normalized)) == 0
             activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
             return activity_reconstruct_a, filtered_matrix_normalized
 
-        digonal_compare = 0
+        # this function is not technically rigorous but since the lists length difference are minimal, the effect is minimal
+        def match_list_lengths(list1, list2):
+            if len(list1) > len(list2):
+                indices_to_remove = random.sample(range(len(list1)), len(list1) - len(list2))
+                list1 = [elem for i, elem in enumerate(list1) if i not in indices_to_remove]
+            elif len(list2) > len(list1):
+                indices_to_remove = random.sample(range(len(list2)), len(list2) - len(list1))
+                list2 = [elem for i, elem in enumerate(list2) if i not in indices_to_remove]
+            
+            return list1, list2
+
+        digonal_compare = 1
         if digonal_compare:
-            t_stat, p_value = stats.ttest_rel(diags[0], diags[1])
+            if len(diags[0]) != len(diags[1]):
+                diag1, diag2 = match_list_lengths(diags[0], diags[1])
+            else:
+                diag1, diag2 = diags[0], diags[1]
+            
+            t_stat, p_value = stats.ttest_rel(diag1, diag2)
             p_value_one_sided = p_value / 2
             p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
 
-            figoffcompare, axoffcompare = plt.subplots(figsize=(4,4))
-            axoffcompare.hist(diags[0], bins=20, alpha=0.7, label='Column', color='blue', density=True)
-            axoffcompare.hist(diags[1], bins=20, alpha=0.7, label='Row', color='red', density=True)
-            axoffcompare.set_title(f"p-value: {p_value_one_sided_final}")
-            axoffcompare.legend()
-            figoffcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare.png")
-
-        # # load embedding (hyp distance in hyp embedding)
-        # R_max = "7.000000e-01"
-        # embedding_dimension = 3
+            figallcompare, axsallcompare = plt.subplots(figsize=(4,4))
+            axsallcompare.hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
+            axsallcompare.hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
+            axsallcompare.hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
+            axsallcompare.hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
+            axsallcompare.legend()
+            axsallcompare.set_title(f"p1: {float_to_scientific(p_values_all[0])}; p2: {float_to_scientific(p_values_all[1])}; p3: {float_to_scientific(p_value_one_sided_final)}")
+            figallcompare.tight_layout()
+            figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
         
         hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
         out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][1]
@@ -390,6 +395,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         metadata["rmax_quantile_out"] = rmax_quantile_out
 
         hypembed_connectome_corr_out = float(R_max) - hypembed_connectome_distance_out
+        # hypembed_connectome_corr_out = np.max(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
         np.fill_diagonal(hypembed_connectome_corr_out, 0)
 
         hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][2]
@@ -398,6 +404,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         metadata["rmax_quantile_in"] = rmax_quantile_in
 
         hypembed_connectome_corr_in = float(R_max) - hypembed_connectome_distance_in
+        # hypembed_connectome_corr_in = np.max(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
         np.fill_diagonal(hypembed_connectome_corr_in, 0)
 
         # load Euclidean embedding coordinate
@@ -406,14 +413,18 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         eulembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][1]
         eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome, metric='euclidean'))
+        metadata["rmax_eul_out_distance"] = np.max(eulembed_connectome_distance_out)
         # 
         eulembed_connectome_corr_out = find_value_for_quantile(eulembed_connectome_distance_out, rmax_quantile_out) - eulembed_connectome_distance_out
+        # eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
         np.fill_diagonal(eulembed_connectome_corr_out, 0)
 
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][2]
         eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome, metric='euclidean'))
+        metadata["rmax_eul_in_distance"] = np.max(eulembed_connectome_distance_in)
         # 
         eulembed_connectome_corr_in = find_value_for_quantile(eulembed_connectome_distance_in, rmax_quantile_in) - eulembed_connectome_distance_in
+        # eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
         np.fill_diagonal(eulembed_connectome_corr_in, 0)
 
         # soma distance (baseline)
@@ -472,18 +483,34 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                                 "Connectome-Out Hyp Embed", "Connectome-Out Eul Embed", "Soma Distance"
                             ]
 
+        reconstruction_corr_basic = all_reconstruction_corr[0]
+        reconstruction_corr_basic_flatten = []
+
         figcheck, axcheck = plt.subplots(1,len(reconstruction_names),figsize=(4*len(reconstruction_names),4))
         for j in range(len(reconstruction_names)):
-            ccc = all_reconstruction_corr[0][j]
+            ccc = reconstruction_corr_basic[j]
             dd = np.triu_indices_from(ccc, k=1)
             upper_tri_values = ccc[dd].flatten()
-            # print(np.sort(upper_tri_values))
+            reconstruction_corr_basic_flatten.append(upper_tri_values)
             axcheck[j].hist(upper_tri_values, bins=50, density=False)
             padding = 0.05 * (max(upper_tri_values) - min(upper_tri_values))
             axcheck[j].set_xlim([min(upper_tri_values)-padding, max(upper_tri_values)+padding])
             axcheck[j].set_title(reconstruction_names[j])
 
         figcheck.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_checkcorr_D{embedding_dimension}_R{R_max}.png")
+
+        cc = len(reconstruction_corr_basic_flatten[:-1])
+        input_matrics_corr = np.zeros((cc, cc))
+        for cc1 in range(cc):
+            for cc2 in range(cc):
+                mat1, mat2 = reconstruction_corr_basic_flatten[cc1], reconstruction_corr_basic_flatten[cc2]
+                corr, _ = pearsonr(mat1, mat2)  
+                input_matrics_corr[cc1, cc2] = corr
+
+        figcorr, axcorr = plt.subplots(1,1,figsize=(4,4))
+        sns.heatmap(input_matrics_corr, ax=axcorr, cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".2f", \
+                    xticklabels=reconstruction_names[:-1], yticklabels=reconstruction_names[:-1])
+        figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_corrcompare_D{embedding_dimension}_R{R_max}.png")
 
         # PSD
         def compute_psd(trace, fs):
@@ -492,22 +519,19 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         fs = fps_value
 
-        select_neuron = [0,5,20,30]
-        timecut = 100
-        figtest, axtest = plt.subplots(2,len(select_neuron), figsize=(4*len(select_neuron),4*2))
+        figtest, axtest = plt.subplots(len(selects),1,figsize=(10,len(selects)*1))
 
-        for nn in select_neuron:
-            freqs_ground_truth, psd_ground_truth = compute_psd(activity_extraction_extra_trc[nn,0:timecut], fs)
-            axtest[0,select_neuron.index(nn)].plot(freqs_ground_truth, psd_ground_truth, c=c_vals[0], label='GroundTruth')
-            axtest[1,select_neuron.index(nn)].plot(activity_extraction_extra[nn,0:timecut], c=c_vals[0], label='GroundTruth')
-            all_reconstruction = all_reconstruction_data[0]
+        for nn in selects:
+            axtest[selects.index(nn)].plot(activity_extraction_extra[nn,:timecut], c=c_vals[selects.index(nn)], label='GroundTruth')
+            # just use activity reconstruction for now (illustration purpose)
+            all_reconstruction = [all_reconstruction_data[0][0]]
             for j in range(len(all_reconstruction)):
-                freqs_reconstructed, psd_reconstructed = compute_psd(all_reconstruction[j][nn,0:timecut], fs)
-                axtest[0,select_neuron.index(nn)].plot(freqs_reconstructed, psd_reconstructed, c=c_vals[j+1], label=reconstruction_names[j], linestyle='--')
-                axtest[0,select_neuron.index(nn)].set_title(f"Neuron {nn}")
-                axtest[1,select_neuron.index(nn)].plot(all_reconstruction[j][nn,0:timecut], c=c_vals[j+1], label=reconstruction_names[j], linestyle='--')
-        for ax in axtest.flatten():
-            ax.legend()
+                axtest[selects.index(nn)].plot(all_reconstruction[j][nn,0:timecut], c=c_vals[0], label=reconstruction_names[j], linestyle='--')
+                axtest[selects.index(nn)].set_title(f"Neuron {nn}")
+                axtest[selects.index(nn)].set_xlim([-2, timecut+2])
+        # for ax in axtest.flatten():
+        #     ax.legend()
+        figtest.tight_layout()
         figtest.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_test.png")
 
         timeuplst = [100,activity_extraction_extra_trc.shape[1]-1]

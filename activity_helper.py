@@ -101,6 +101,20 @@ def angles_between_flats(v_lst, u_lst):
     
     return smallest_angle_degrees
 
+def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=20):
+    U_connectome, S_connectome, Vh_connectome = np.linalg.svd(W_corr)
+    U_activity, S_activity, Vh_activity = np.linalg.svd(activity_correlation)
+
+    dim_loader, angle_loader = [], []
+    for num_dimension in range(1,angle_consideration):
+        U_comps_activity = [U_activity[:,i] for i in range(num_dimension)]
+        U_comps_connectome = [U_connectome[:,i] for i in range(num_dimension)]
+        angle_in_bewteen = angles_between_flats(U_comps_activity, U_comps_connectome)
+        dim_loader.append(num_dimension)
+        angle_loader.append(angle_in_bewteen)
+
+    return dim_loader, angle_loader
+
 def test_diagonal_significance(matrix):
     """
     """

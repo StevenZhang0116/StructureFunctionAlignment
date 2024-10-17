@@ -13,7 +13,7 @@ plt.style.use(['no-latex'])
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
 
-def microns_across_scans(R_max, dimension):
+def microns_across_scans(R_max, dimension, Kselect):
     def find_pkl_files(directory):
         
         # only select pkl files with desired dimension and R_max
@@ -33,8 +33,6 @@ def microns_across_scans(R_max, dimension):
     gt_median_corrs = []
 
     timeselect = "all"
-    # if 0, using all neurons; if 1, using half neurons
-    Kselect = 0
 
     for pkl_file_path in pkl_files:
         with open(pkl_file_path, 'rb') as file:
@@ -77,7 +75,7 @@ def microns_across_scans(R_max, dimension):
     figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    indices = [[0,1,2,6],[3,4,5,6]]
+    indices = [[0,1,2],[3,4,5]]
 
     for i in range(len(alldata)):
         kk = 0
@@ -94,9 +92,10 @@ def microns_across_scans(R_max, dimension):
 
         hypratio, eulratio, somaratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten(), alldata[i][:,5].flatten()
 
-        data = [hypratio, eulratio, toactratio, somaratio]
+        # data = [hypratio, eulratio, toactratio, somaratio]
+        data = [hypratio, eulratio, toactratio]
 
-        positions = [indices[i][0], indices[i][1], indices[i][2], indices[i][3]]  
+        positions = [indices[i][0], indices[i][1], indices[i][2]]  
 
         violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
 
@@ -110,7 +109,8 @@ def microns_across_scans(R_max, dimension):
     fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
 
-    names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act", "Soma2Act"]
+    # names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act", "Soma2Act"]
+    names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     axexp.axhline(1, c='red', linestyle='--')
