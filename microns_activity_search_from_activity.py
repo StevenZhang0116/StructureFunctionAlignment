@@ -31,7 +31,7 @@ import activity_helper
 
 from netrep.metrics import LinearMetric
 
-c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
+c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
 def float_to_scientific(value, n=4):
@@ -107,14 +107,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     selectss_df = cell_table.loc[selected_neurons]
     soma_locations = selectss_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
     soma_distances = squareform(pdist(soma_locations, metric='euclidean'))
-    # print(np.median(soma_distances.reshape(-1,1)))
-    # time.sleep(10000)
 
-    # plot activity trace
-    fig, axs = plt.subplots(1,1,figsize=(4,4))
-    tcmap = LinearSegmentedColormap.from_list('custom_cmap', ['white', 'blue'])
-    sns.heatmap(activity_extraction_extra, ax=axs, cbar=True, square=False, cmap=tcmap)
-    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity.png")
 
     selects = [1,12,18,25,32,36]
     ttt = activity_extraction_extra.shape[1]
@@ -236,12 +229,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         diags.append(diagonal)
         offdiags.append(off_diagonal)
 
-        ax_dist[corrind].hist(diagonal, bins=20, alpha=0.7, label='Diagonal Elements', color=c_vals[1], density=True)
-        ax_dist[corrind].hist(off_diagonal, bins=20, alpha=0.7, label='Off-Diagonal Elements', color=c_vals[0], density=True)
-        ax_dist[corrind].set_title(f"p-value: {float_to_scientific(p_value)} - {correlation_index}")
-        ax_dist[corrind].set_xlabel('Value')
-        ax_dist[corrind].set_ylabel('Frequency')
-        ax_dist[corrind].legend()
+        # ax_dist[corrind].hist(diagonal, bins=20, alpha=0.7, label='Diagonal Elements', color=c_vals[1], density=True)
+        # ax_dist[corrind].hist(off_diagonal, bins=20, alpha=0.7, label='Off-Diagonal Elements', color=c_vals[0], density=True)
+        # ax_dist[corrind].set_title(f"p-value: {float_to_scientific(p_value)} - {correlation_index}")
+        # ax_dist[corrind].set_xlabel('Value')
+        # ax_dist[corrind].set_ylabel('Frequency')
+        # ax_dist[corrind].legend()
 
         # subspace angle analysis
         # here we refill the diagonal to be 0 (instead of nan/inf as previous)
@@ -252,18 +245,18 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr, activity_correlation)
 
-        ax_dist[2].plot(dim_loader, angle_loader, "-o", label=f"{correlation_index}")
-        ax_dist[2].set_xlabel("Dimensionality")
-        ax_dist[2].set_ylabel("Angle")
+        # ax_dist[2].plot(dim_loader, angle_loader, "-o", label=f"{correlation_index}")
+        # ax_dist[2].set_xlabel("Dimensionality")
+        # ax_dist[2].set_ylabel("Angle")
 
         metadata[f"{correlation_index}_angle"] = angle_loader
 
     fig.tight_layout()
     fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_heatmap.png")
-    ax_dist[2].legend()
-    fig_dist.tight_layout()
-    fig_dist.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_dist.png")
 
+    # ax_dist[2].legend()
+    # fig_dist.tight_layout()
+    # fig_dist.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_dist.png")
 
     def merge_arrays(arrays):
         union_result = arrays[0]    
@@ -312,7 +305,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     if for_construction:
 
-        def reconstruction(W, K="all"):
+        def reconstruction(W, K="all", permute=False):
             """
             add option to only take top K components in reconstruction
             if K=None, then using all neurons (without any low-pass filter)
@@ -329,6 +322,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             # row_sums_a = np.sum(filtered_matrix, axis=1)
             filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
             assert np.sum(np.diag(filtered_matrix_normalized)) == 0
+            # permute the matrix but still keep it symmetric
+            if permute:
+                filtered_matrix_normalized = activity_helper.permute_symmetric_matrix(filtered_matrix_normalized)
             activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
             return activity_reconstruct_a, filtered_matrix_normalized
 
@@ -354,13 +350,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             p_value_one_sided = p_value / 2
             p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
 
-            figallcompare, axsallcompare = plt.subplots(figsize=(4,4))
-            axsallcompare.hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
-            axsallcompare.hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
-            axsallcompare.hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
-            axsallcompare.hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
-            axsallcompare.legend()
-            axsallcompare.set_title(f"p1: {float_to_scientific(p_values_all[0])}; p2: {float_to_scientific(p_values_all[1])}; p3: {float_to_scientific(p_value_one_sided_final)}")
+            figallcompare, axsallcompare = plt.subplots(1,2,figsize=(4*2,4))
+            axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
+            axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
+            axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
+            axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
+            axsallcompare[0].legend()
+            axsallcompare[0].set_title(f"p1: {float_to_scientific(p_values_all[0])}; p2: {float_to_scientific(p_values_all[1])}; p3: {float_to_scientific(p_value_one_sided_final)}")
+
+            for correlation_index in correlation_index_lst:
+                axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
+                                        label=f"{correlation_index}")
+            axsallcompare[1].legend()
+            axsallcompare[1].set_xlabel("Angle Index")
+            axsallcompare[1].set_ylabel("Angle")
+
             figallcompare.tight_layout()
             figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
         
@@ -469,25 +473,32 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # collection of all categories of reconstruction
         all_reconstruction_data = [
-            [reconstruction(W, K)[0] for W in input_matrices] 
+            [reconstruction(W, K, False)[0] for W in input_matrices] 
+            for K in topK_values
+        ]
+
+        all_reconstruction_data_permute = [
+            [reconstruction(W, K, True)[0] for W in input_matrices] 
             for K in topK_values
         ]
 
         all_reconstruction_corr = [
-            [reconstruction(W, K)[1] for W in input_matrices] 
+            [reconstruction(W, K, False)[1] for W in input_matrices] 
             for K in topK_values
         ]
 
-        reconstruction_names = ["Activity Correlation", "Connectome-In Correlation", "Connectome-In Hyp Embed", \
-                                "Connectome-In Eul Embed", "Connectome-Out Correlation", \
-                                "Connectome-Out Hyp Embed", "Connectome-Out Eul Embed", "Soma Distance"
+        reconstruction_names = ["Activity Correlation", \
+                                "Connectome-In Correlation", "Connectome-In Hyp Embed", "Connectome-In Eul Embed", \
+                                "Connectome-Out Correlation", "Connectome-Out Hyp Embed", "Connectome-Out Eul Embed", \
+                                "Soma Distance"
                             ]
 
         reconstruction_corr_basic = all_reconstruction_corr[0]
         reconstruction_corr_basic_flatten = []
 
-        figcheck, axcheck = plt.subplots(1,len(reconstruction_names),figsize=(4*len(reconstruction_names),4))
-        for j in range(len(reconstruction_names)):
+        # distribution plotting
+        figcheck, axcheck = plt.subplots(1,len(input_matrices),figsize=(4*len(input_matrices),4))
+        for j in range(len(input_matrices)):
             ccc = reconstruction_corr_basic[j]
             dd = np.triu_indices_from(ccc, k=1)
             upper_tri_values = ccc[dd].flatten()
@@ -499,17 +510,23 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         figcheck.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_checkcorr_D{embedding_dimension}_R{R_max}.png")
 
+        # correlation of distribution plotting
         cc = len(reconstruction_corr_basic_flatten[:-1])
-        input_matrics_corr = np.zeros((cc, cc))
+        input_matrics_corr, input_matrics_rank_diff = np.zeros((cc, cc)), np.zeros((cc, cc))
         for cc1 in range(cc):
             for cc2 in range(cc):
                 mat1, mat2 = reconstruction_corr_basic_flatten[cc1], reconstruction_corr_basic_flatten[cc2]
                 corr, _ = pearsonr(mat1, mat2)  
+                rankdiff = np.mean(np.abs(list(rankdata(mat1, method='dense') - rankdata(mat2, method='dense'))))
                 input_matrics_corr[cc1, cc2] = corr
+                input_matrics_rank_diff[cc1, cc2] = rankdiff
 
-        figcorr, axcorr = plt.subplots(1,1,figsize=(4,4))
-        sns.heatmap(input_matrics_corr, ax=axcorr, cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".2f", \
+        figcorr, axcorr = plt.subplots(1,2,figsize=(10*2,10))
+        sns.heatmap(input_matrics_corr, ax=axcorr[0], cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".2f", \
                     xticklabels=reconstruction_names[:-1], yticklabels=reconstruction_names[:-1])
+        sns.heatmap(input_matrics_rank_diff, ax=axcorr[1], cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".1f", \
+                    xticklabels=reconstruction_names[:-1], yticklabels=reconstruction_names[:-1])
+        figcorr.tight_layout()
         figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_corrcompare_D{embedding_dimension}_R{R_max}.png")
 
         # PSD
@@ -538,15 +555,29 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # timeuplst = [100,1000,10000,20000,30000,activity_extraction_extra.shape[1]-1]
         ttlength = activity_extraction_extra_trc.shape[1]
 
+        # add some random permuted data for the embedding results for sanity check
+        # also add the correpsponding labels
+        for kk in range(len(all_reconstruction_data)):
+            all_reconstruction_data[kk].append(all_reconstruction_data_permute[kk][2])
+            all_reconstruction_data[kk].append(all_reconstruction_data_permute[kk][3])
+            all_reconstruction_data[kk].append(all_reconstruction_data_permute[kk][5])
+            all_reconstruction_data[kk].append(all_reconstruction_data_permute[kk][6])
+
+        reconstruction_names.extend(["Connectome-In Hyp Embed Permuted", "Connectome-In Eul Embed Permuted", \
+                                     "Connectome-Out Hyp Embed Permuted", "Connectome-Out Eul Embed Permuted"
+                                ])
+
         # Approach: temporal moving window to calculate correlation
         KK = len(all_reconstruction_data)
         figact1, axsact1 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
         figact2, axsact2 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
         figact3, axsact3 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
+        figact4, axsact4 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
 
         axsact1 = np.atleast_1d(axsact1)
         axsact2 = np.atleast_1d(axsact2)
         axsact3 = np.atleast_1d(axsact3)
+        axsact4 = np.atleast_1d(axsact4)
 
 
         def vectorized_pearsonr(x, y):
@@ -567,11 +598,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 summ = []
                 # iterate across neurons
                 # unroll time dimension
+                # we write this part explicitly (though redundant) for clarity
                 for i in range(activity_extraction_extra_trc.shape[0]):
                     # print(i)
                     # Create a matrix of all windows for neuron i
                     gt = np.lib.stride_tricks.sliding_window_view(activity_extraction_extra_trc[i], window_shape=timeup)
-                    # print(gt.shape)
+
                     gt_a = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][0][i], window_shape=timeup)
                     gt_c1 = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][1][i], window_shape=timeup)
                     gt_c1_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][2][i], window_shape=timeup)
@@ -580,6 +612,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                     gt_c2_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][5][i], window_shape=timeup)
                     gt_c2_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][6][i], window_shape=timeup)
                     gt_soma = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][7][i], window_shape=timeup)
+
+                    gt_c1_hypembed_pm = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][8][i], window_shape=timeup)
+                    gt_c1_eulembed_pm = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][9][i], window_shape=timeup)
+                    gt_c2_hypembed_pm = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][10][i], window_shape=timeup)
+                    gt_c2_eulembed_pm = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][11][i], window_shape=timeup)
 
                     # Calculate correlations in a vectorized manner
                     corr_with_a = vectorized_pearsonr(gt, gt_a)
@@ -591,15 +628,25 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                     corr_with_c2_eulembed = vectorized_pearsonr(gt, gt_c2_eulembed)
                     corr_with_soma = vectorized_pearsonr(gt, gt_soma)
 
+                    corr_with_c1_hypembed_pm = vectorized_pearsonr(gt, gt_c1_hypembed_pm)
+                    corr_with_c1_eulembed_pm = vectorized_pearsonr(gt, gt_c1_eulembed_pm)
+                    corr_with_c2_hypembed_pm = vectorized_pearsonr(gt, gt_c2_hypembed_pm)
+                    corr_with_c2_eulembed_pm = vectorized_pearsonr(gt, gt_c2_eulembed_pm)
+
                     # Calculate mean of correlations across all windows for neuron i
-                    summ.append([corr_with_a.mean(), corr_with_c1.mean(), corr_with_c1_hypembed.mean(), corr_with_c1_eulembed.mean(), \
-                                        corr_with_c2.mean(), corr_with_c2_hypembed.mean(), corr_with_c2_eulembed.mean(), corr_with_soma.mean()])
+                    summ.append([corr_with_a.mean(), \
+                                corr_with_c1.mean(), corr_with_c1_hypembed.mean(), corr_with_c1_eulembed.mean(), \
+                                corr_with_c2.mean(), corr_with_c2_hypembed.mean(), corr_with_c2_eulembed.mean(), \
+                                corr_with_soma.mean(), \
+                                corr_with_c1_hypembed_pm.mean(), corr_with_c1_eulembed_pm.mean(), corr_with_c2_hypembed_pm.mean(), corr_with_c2_eulembed_pm.mean()
+                                        
+                                ])
 
                 summ = np.array(summ)
                 medians = {}
-                input_groups = [[0,1,4,7],[1,2,3],[4,5,6]]
-                all_use = list(range(0,8))
-                axsacts = [axsact1, axsact2, axsact3]
+                input_groups = [[0,1,4,7],[1,2,3],[4,5,6],[8,9,10,11]]
+                all_use = list(range(0,12))
+                axsacts = [axsact1, axsact2, axsact3, axsact4]
                 for group in input_groups:
                     for j in group:  
                         mm = np.median(summ[:, j])
@@ -623,7 +670,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
                 kk_medians.append(medians)
                 
-
             allk_medians.append(kk_medians)
 
         for axsact in axsacts:
@@ -635,21 +681,23 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         figact1.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare1_D{embedding_dimension}_R{R_max}.png")
         figact2.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare2_D{embedding_dimension}_R{R_max}.png")
         figact3.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare3_D{embedding_dimension}_R{R_max}.png")
+        figact4.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare4_D{embedding_dimension}_R{R_max}.png")
 
 
-        figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(4*len(allk_medians),4))
+        figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(10*len(allk_medians),10))
 
         linestyles = ["-", "--", "-.", ":", (0, (1, 1)), (0, (5, 1)), (0, (3, 1, 1, 1)), (0, (5, 10))]
         plotstyles = [[c_vals[0], linestyles[0]], \
                     [c_vals[1], linestyles[0]], [c_vals[1], linestyles[1]], [c_vals[1], linestyles[2]], \
                     [c_vals[2], linestyles[0]], [c_vals[2], linestyles[1]], [c_vals[2], linestyles[2]], \
-                    [c_vals[3], linestyles[0]]
+                    [c_vals[3], linestyles[0]],
+                    [c_vals[4], linestyles[0]], [c_vals[4], linestyles[1]], [c_vals[4], linestyles[2]], [c_vals[4], linestyles[3]]
                 ]
 
         for i in range(len(allk_medians)):
             medians = np.array(allk_medians[i])
             for j in range(medians.shape[1]):
-                axsactshow[i].plot(timeuplst, medians[:,j], color=plotstyles[j][0], linestyle=plotstyles[j][1], label=reconstruction_names[j])
+                axsactshow[i].plot(timeuplst, medians[:,j], color=plotstyles[j][0], linestyle=plotstyles[j][1], linewidth=5, label=reconstruction_names[j])
             axsactshow[i].set_title(f"K={topK_values[i]}")
             axsactshow[i].legend()
 
@@ -662,7 +710,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         metadata["timeuplst"] = timeuplst
         metadata["allk_medians"] = allk_medians
         
-
         with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 

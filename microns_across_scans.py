@@ -11,7 +11,7 @@ import scienceplots
 plt.style.use('science')
 plt.style.use(['no-latex'])
 
-c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e']
+c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 
 def microns_across_scans(R_max, dimension, Kselect):
     def find_pkl_files(directory):
@@ -58,14 +58,18 @@ def microns_across_scans(R_max, dimension, Kselect):
 
         soma_explainratio = allk_medians[7]/allk_medians[0]
 
-
         in_hyp_ratio = allk_medians[2]/allk_medians[1]
         in_eul_ratio = allk_medians[3]/allk_medians[1]
+        in_hyp_ratio_pm = allk_medians[8]/allk_medians[1]
+        in_eul_ratio_pm = allk_medians[9]/allk_medians[1]
+
         out_hyp_ratio = allk_medians[5]/allk_medians[4]
         out_eul_ratio = allk_medians[6]/allk_medians[4]
+        out_hyp_ratio_pm = allk_medians[10]/allk_medians[4]
+        out_eul_ratio_pm = allk_medians[11]/allk_medians[4]
 
-        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio])
-        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio])
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio])
 
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
@@ -75,7 +79,7 @@ def microns_across_scans(R_max, dimension, Kselect):
     figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    indices = [[0,1,2],[3,4,5]]
+    indices = [[0,1,2,3,4],[5,6,7,8,9]]
 
     for i in range(len(alldata)):
         kk = 0
@@ -90,12 +94,14 @@ def microns_across_scans(R_max, dimension, Kselect):
             axs[i].set_xlabel(f"Number of Neurons")
         axs[i].set_ylabel(f"{allmarks[i]} Explain Ratio")
 
-        hypratio, eulratio, somaratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten(), alldata[i][:,5].flatten()
+        hypratio, eulratio, somaratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten(), alldata[i][:,7].flatten()
+        hypratiopm, eulratiopm = alldata[i][:,5].flatten(), alldata[i][:,6].flatten()
 
         # data = [hypratio, eulratio, toactratio, somaratio]
-        data = [hypratio, eulratio, toactratio]
+        data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
 
-        positions = [indices[i][0], indices[i][1], indices[i][2]]  
+        # positions = [indices[i][0],indices[i][1],indices[i][2],indices[i][3],indices[i][4]]  
+        positions = [indices[i][j] for j in range(len(indices[i]))]
 
         violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
 
@@ -109,8 +115,7 @@ def microns_across_scans(R_max, dimension, Kselect):
     fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
 
-    # names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act", "Soma2Act"]
-    names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
+    names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     axexp.axhline(1, c='red', linestyle='--')

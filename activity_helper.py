@@ -57,6 +57,8 @@ def remove_nan_inf_union(matrix):
 
 
 def cosine_similarity(arr1, arr2):
+    """
+    """
     dot_product = np.dot(arr1, arr2)
     norm_a = np.linalg.norm(arr1)
     norm_b = np.linalg.norm(arr2)
@@ -101,7 +103,19 @@ def angles_between_flats(v_lst, u_lst):
     
     return smallest_angle_degrees
 
+def permute_symmetric_matrix(matrix):
+    """
+    """
+    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
+    N = matrix.shape[0]
+    permutation = np.random.permutation(N)    
+    permuted_matrix = matrix[permutation][:, permutation]
+    
+    return permuted_matrix
+
 def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=20):
+    """
+    """
     U_connectome, S_connectome, Vh_connectome = np.linalg.svd(W_corr)
     U_activity, S_activity, Vh_activity = np.linalg.svd(activity_correlation)
 
