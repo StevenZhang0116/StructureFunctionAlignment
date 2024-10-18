@@ -45,7 +45,7 @@ def microns_across_scans(R_max, dimension, Kselect):
 
         cc = 1
 
-        # gt_median_corrs.append(data["gt_median_corr"])
+        gt_median_corrs.append(data["gt_median_corr"])
 
         num_neurons = data["num_neurons"]
         rmax_quantiles.append([data["rmax_quantile_out"], data["rmax_quantile_in"]])
@@ -110,7 +110,6 @@ def microns_across_scans(R_max, dimension, Kselect):
             body.set_edgecolor('black')             # Optionally set edge color
             body.set_alpha(0.7)                     # Set transparency (optional)
 
-
     fig.tight_layout()
     fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
@@ -132,3 +131,90 @@ def microns_across_scans(R_max, dimension, Kselect):
     figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
     np.savez(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.npz", alldata=alldata)
+
+
+def microns_across_scans_rnn(Kselect):
+    def find_pkl_files(directory):
+        
+        strname = f".pkl"
+        all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
+        matching_files = [f for f in all_pkl_files if strname in os.path.basename(f)]
+        return matching_files
+
+    directory_path = "./output_rnn/"
+    pkl_files = find_pkl_files(directory_path)
+    print(pkl_files)
+    
+    coldata, rowdata, somadata = [], [], []
+    rmax_quantiles = []
+
+    timeselect = "all"
+
+    for pkl_file_path in pkl_files:
+        with open(pkl_file_path, 'rb') as file:
+            data = pickle.load(file)
+
+        if timeselect == "all":
+            ttind = -1
+        else:
+            ttind = data["timeuplst"].index(timeselect)
+
+        cc = 1
+
+        num_neurons = None
+        rmax_quantiles.append([data["rmax_quantile_out"], data["rmax_quantile_in"]])
+
+        column_primary_angle = None
+        row_primary_angle = None
+        allk_medians = data["allk_medians"][Kselect][ttind]
+        column_explainratio = allk_medians[1]/allk_medians[0]
+        row_explainratio = allk_medians[4]/allk_medians[0]
+
+        soma_explainratio = None
+
+        in_hyp_ratio = allk_medians[2]-allk_medians[1]
+        in_eul_ratio = allk_medians[3]-allk_medians[1]
+
+        out_hyp_ratio = allk_medians[5]-allk_medians[4]
+        out_eul_ratio = allk_medians[6]-allk_medians[4]
+
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio])
+
+    coldata, rowdata = np.array(coldata), np.array(rowdata)
+    alldata = [coldata, rowdata]
+    allmarks = ["In-Correlation", "Out-Correlation"]
+
+    fig, axs = plt.subplots(1,2,figsize=(4*2,4))
+    figexp, axexp = plt.subplots(1,1,figsize=(4,4))
+    figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
+
+    indices = [[0,1,2],[3,4,5]]
+
+    for i in range(len(alldata)):
+        toactratio = alldata[i][:,2].flatten()
+
+        hypratio, eulratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten()
+
+        data = [list(hypratio), list(eulratio), list(toactratio)]
+
+        positions = [indices[i][j] for j in range(len(indices[i]))]
+
+        violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
+
+        for j, body in enumerate(violin_parts['bodies']):
+            body.set_facecolor(c_vals[indices[i][j]])  # Set color for each violin
+            body.set_edgecolor('black')             # Optionally set edge color
+            body.set_alpha(0.7)                     # Set transparency (optional)
+
+    fig.tight_layout()
+    fig.savefig(f"./output/zz_overall_rnn_K{Kselect}.png")
+
+    names = ["Hyp2Out", "Eul2Out", "Out2Act", "Hyp2In", "Eul2In", "In2Act"]
+    axexp.set_xticks(range(len(names))) 
+    axexp.set_xticklabels(names, rotation=45, ha='right')
+    # axexp.axhline(1, c='red', linestyle='--')
+    # axexp.set_ylim([-1,1])
+
+    axexp.set_ylabel("Explanation Ratio")
+    figexp.savefig(f"./output_rnn/zz_overall_exp_rnn_K{Kselect}.png")

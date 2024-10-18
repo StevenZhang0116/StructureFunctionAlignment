@@ -5,7 +5,8 @@ from microns_across_scans import *
 from microns_parameter_search import *
 
 if __name__ == "__main__":
-    R_max_lst = ["1.000000e-02", "5.000000e-02", "1.000000e-01", "2.000000e-01", "5.000000e-01", "7.000000e-01", "1","1.250000e+00", "1.500000e+00"]
+    # R_max_lst = ["1.000000e-02", "5.000000e-02", "1.000000e-01", "2.000000e-01", "5.000000e-01", "7.000000e-01", "1","1.250000e+00", "1.500000e+00"]
+    R_max_lst = ["1"]
     D = 2
     # how many neurons in the calculation
     # 0: all neurons; if > 0: may need to check microns_activity_search_from_activity for the detailed setting

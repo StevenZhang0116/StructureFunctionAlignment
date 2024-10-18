@@ -4,6 +4,7 @@ from scipy.sparse import csr_matrix
 from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 import time
+import random
 
 
 def pearson_correlation_with_nans(arr1, arr2):
@@ -79,6 +80,58 @@ def sanity_check_W(truncated_W_correlation, activity_correlation):
 
     return truncated_W_correlation, activity_correlation, indices_to_delete
 
+def match_list_lengths(list1, list2):
+    """
+    this function is not technically rigorous but since the lists length difference are minimal, the effect is minimal
+    """
+    if len(list1) > len(list2):
+        indices_to_remove = random.sample(range(len(list1)), len(list1) - len(list2))
+        list1 = [elem for i, elem in enumerate(list1) if i not in indices_to_remove]
+    elif len(list2) > len(list1):
+        indices_to_remove = random.sample(range(len(list2)), len(list2) - len(list1))
+        list2 = [elem for i, elem in enumerate(list2) if i not in indices_to_remove]
+    
+    return list1, list2
+
+def find_quantile(matrix, value):
+    """
+    """
+    flattened = np.sort(matrix.flatten())            
+    rank = np.searchsorted(flattened, value, side='right')            
+    quantile = rank / len(flattened)
+    return quantile
+
+def find_value_for_quantile(matrix, quantile):
+    """
+    """
+    flattened = np.sort(matrix.flatten())            
+    index = int(np.clip(quantile * len(flattened), 0, len(flattened) - 1))            
+    return flattened[index]
+
+def permute_symmetric_matrix(matrix):
+    """
+    """
+    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
+    N = matrix.shape[0]
+    permutation = np.random.permutation(N)    
+    permuted_matrix = matrix[permutation][:, permutation]
+    
+    return permuted_matrix
+
+def permute_symmetric_matrix_cellwise(matrix):
+    """
+    """
+    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
+    N = matrix.shape[0]    
+    triu_indices = np.triu_indices(N, k=1)    
+    upper_tri_values = matrix[triu_indices]    
+    permuted_values = np.random.permutation(upper_tri_values)    
+    permuted_matrix = np.zeros_like(matrix)    
+    np.fill_diagonal(permuted_matrix, np.diag(matrix))    
+    permuted_matrix[triu_indices] = permuted_values    
+    permuted_matrix = permuted_matrix + permuted_matrix.T - np.diag(np.diag(permuted_matrix))
+    
+    return permuted_matrix
 
 def angles_between_flats(v_lst, u_lst):
     """
@@ -102,16 +155,6 @@ def angles_between_flats(v_lst, u_lst):
     smallest_angle_degrees = np.degrees(np.arccos(np.max(sigma)))
     
     return smallest_angle_degrees
-
-def permute_symmetric_matrix(matrix):
-    """
-    """
-    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
-    N = matrix.shape[0]
-    permutation = np.random.permutation(N)    
-    permuted_matrix = matrix[permutation][:, permutation]
-    
-    return permuted_matrix
 
 def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=20):
     """
