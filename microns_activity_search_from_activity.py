@@ -35,9 +35,6 @@ from netrep.metrics import LinearMetric
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def float_to_scientific(value, n=4):
-    return f"{value:.{n}e}"
-
 def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data):
 
     metadata = {}
@@ -109,14 +106,14 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     soma_locations = selectss_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
     soma_distances = squareform(pdist(soma_locations, metric='euclidean'))
 
-    selects = [1,12,18,25,32,36]
+    selects = [1,12,18,25,32,34]
     ttt = activity_extraction_extra.shape[1]
     timecut = int(ttt/100)
     fignewact, axsnewact = plt.subplots(len(selects),1,figsize=(10,len(selects)*1))
     for ni in selects:
-        axsnewact[selects.index(ni)].plot(activity_extraction_extra[ni,:timecut], c=c_vals[selects.index(ni)])
+        axsnewact[selects.index(ni)].plot([i / fps_value for i in range(timecut)], activity_extraction_extra[ni,:timecut], c=c_vals[selects.index(ni)])
         axsnewact[selects.index(ni)].set_title(f"Neuron {ni}")
-        axsnewact[selects.index(ni)].set_xlim([-2, timecut+2])
+        axsnewact[selects.index(ni)].set_xlim([-1, timecut/fps_value+1])
     fignewact.tight_layout()
     fignewact.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_activity_new.png")
 
@@ -207,10 +204,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         sns.heatmap(relation_matrix_compare, ax=axs[corrind,1], cbar=True, square=True, cmap="coolwarm", vmin=np.min(relation_matrix_compare), vmax=np.max(relation_matrix_compare))
         sns.heatmap(activity_correlation, ax=axs[corrind,2], cbar=True, square=True)
         sns.heatmap(W_corr, ax=axs[corrind,3], cbar=True, square=True)
-        axs[corrind,0].set_title(f"Microns Corr(Corr(W), Corr(A)) - {correlation_index}")
-        axs[corrind,1].set_title("Microns Corr(W, Corr(A))")
+        axs[corrind,0].set_title(f"Corr(Corr(W), Corr(A)) - {correlation_index}")
+        axs[corrind,1].set_title("Corr(W, Corr(A))")
         axs[corrind,2].set_title("Corr(A)")
-        axs[corrind,3].set_title("Corr(W)")
+        axs[corrind,3].set_title(f"Corr(W) - {correlation_index}")
 
         relation_matrix = activity_helper.remove_nan_inf_union(relation_matrix)
         relation_matrix = np.where(np.isnan(relation_matrix) | np.isinf(relation_matrix), 0, relation_matrix)
@@ -333,7 +330,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
         axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
         axsallcompare[0].legend()
-        axsallcompare[0].set_title(f"p1: {float_to_scientific(p_values_all[0])}; p2: {float_to_scientific(p_values_all[1])}; p3: {float_to_scientific(p_value_one_sided_final)}")
+        axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
 
         for correlation_index in correlation_index_lst:
             axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
@@ -341,6 +338,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsallcompare[1].legend()
         axsallcompare[1].set_xlabel("Angle Index")
         axsallcompare[1].set_ylabel("Angle")
+        axsallcompare[1].set_title("Subspace Angle")
 
         figallcompare.tight_layout()
         figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
@@ -506,13 +504,15 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         figtest, axtest = plt.subplots(len(selects),1,figsize=(10,len(selects)*1))
 
         for nn in selects:
-            axtest[selects.index(nn)].plot(activity_extraction_extra[nn,:timecut], c=c_vals[selects.index(nn)], label='GroundTruth')
+            axtest[selects.index(nn)].plot([i / fps_value for i in range(timecut)],activity_extraction_extra[nn,:timecut], \
+                        c=c_vals[selects.index(nn)], label='GroundTruth')
             # just use activity reconstruction for now (illustration purpose)
             all_reconstruction = [all_reconstruction_data[0][0]]
             for j in range(len(all_reconstruction)):
-                axtest[selects.index(nn)].plot(all_reconstruction[j][nn,0:timecut], c=c_vals[0], label=reconstruction_names[j], linestyle='--')
+                axtest[selects.index(nn)].plot([i / fps_value for i in range(timecut)],all_reconstruction[j][nn,:timecut], \
+                        c=c_vals[0], label=reconstruction_names[j], linestyle='--')
                 axtest[selects.index(nn)].set_title(f"Neuron {nn}")
-                axtest[selects.index(nn)].set_xlim([-2, timecut+2])
+                axtest[selects.index(nn)].set_xlim([-1, timecut/fps_value+1])
         # for ax in axtest.flatten():
         #     ax.legend()
         figtest.tight_layout()
@@ -750,8 +750,8 @@ def benchmark_with_rnn(trial_index):
     rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out, float(R_max))
     metadata["rmax_quantile_out"] = rmax_quantile_out
 
-    hypembed_connectome_corr_out = float(R_max) - hypembed_connectome_distance_out
-    # hypembed_connectome_corr_out = np.max(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
+    # hypembed_connectome_corr_out = float(R_max) - hypembed_connectome_distance_out
+    hypembed_connectome_corr_out = np.max(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
     np.fill_diagonal(hypembed_connectome_corr_out, 0)
 
     hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][2]
@@ -759,8 +759,8 @@ def benchmark_with_rnn(trial_index):
     rmax_quantile_in = activity_helper.find_quantile(hypembed_connectome_distance_in, float(R_max))
     metadata["rmax_quantile_in"] = rmax_quantile_in
 
-    hypembed_connectome_corr_in = float(R_max) - hypembed_connectome_distance_in
-    # hypembed_connectome_corr_in = np.max(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
+    # hypembed_connectome_corr_in = float(R_max) - hypembed_connectome_distance_in
+    hypembed_connectome_corr_in = np.max(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
     np.fill_diagonal(hypembed_connectome_corr_in, 0)
 
     # load Euclidean embedding coordinate
@@ -771,16 +771,16 @@ def benchmark_with_rnn(trial_index):
     eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome, metric='euclidean'))
     metadata["rmax_eul_out_distance"] = np.max(eulembed_connectome_distance_out)
     # 
-    eulembed_connectome_corr_out = activity_helper.find_value_for_quantile(eulembed_connectome_distance_out, rmax_quantile_out) - eulembed_connectome_distance_out
-    # eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
+    # eulembed_connectome_corr_out = activity_helper.find_value_for_quantile(eulembed_connectome_distance_out, rmax_quantile_out) - eulembed_connectome_distance_out
+    eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
     np.fill_diagonal(eulembed_connectome_corr_out, 0)
 
     eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][2]
     eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome, metric='euclidean'))
     metadata["rmax_eul_in_distance"] = np.max(eulembed_connectome_distance_in)
     # 
-    eulembed_connectome_corr_in = activity_helper.find_value_for_quantile(eulembed_connectome_distance_in, rmax_quantile_in) - eulembed_connectome_distance_in
-    # eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
+    # eulembed_connectome_corr_in = activity_helper.find_value_for_quantile(eulembed_connectome_distance_in, rmax_quantile_in) - eulembed_connectome_distance_in
+    eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
     np.fill_diagonal(eulembed_connectome_corr_in, 0)
 
 
@@ -851,7 +851,7 @@ def benchmark_with_rnn(trial_index):
         axcheck[j].set_xlim([min(upper_tri_values)-padding, max(upper_tri_values)+padding])
         axcheck[j].set_title(reconstruction_names[j])
 
-    figcheck.savefig(f"./output/fromac_session_rnn_{trial_index}_checkcorr.png")
+    figcheck.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_checkcorr.png")
 
     # correlation of distribution plotting
     cc = len(reconstruction_corr_basic_flatten[:-1])
@@ -889,7 +889,7 @@ def benchmark_with_rnn(trial_index):
     # for ax in axtest.flatten():
     #     ax.legend()
     figtest.tight_layout()
-    figtest.savefig(f"./output/fromac_session_rnn_{trial_index}_test.png")
+    figtest.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_test.png")
 
     timeuplst = [100,activity_extraction_extra_trc.shape[1]-1]
     # timeuplst = [100,1000,10000,20000,30000,activity_extraction_extra.shape[1]-1]
@@ -1025,9 +1025,9 @@ def benchmark_with_rnn(trial_index):
 
 
 def all_run(R_max, embedding_dimension, raw_data):
-    # session_scan = [[4,7],[5,6],[5,7],[6,2],[6,4],[6,6],[7,4],[8,5],[9,3],[9,4]]
-    session_scan = [[7,5],[6,7],[7,3],[5,3]]
-    for_construction = 0
+    # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
+    session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
+    for_construction = 1
     for ss in session_scan:
         run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)
         gc.collect()
@@ -1037,7 +1037,14 @@ def all_run(R_max, embedding_dimension, raw_data):
 
 if __name__ == "__main__":
 
-    # for trial_index in range(10):
-    #     benchmark_with_rnn(trial_index)
+    all_run(2,"1",False)
 
-    microns_across_scans.microns_across_scans_rnn(0)
+    # for trial_index in range(50):
+    #     try:
+    #         benchmark_with_rnn(trial_index)
+    #     except Exception as e:
+    #         print(e)
+    #         continue
+
+    # microns_across_scans.microns_across_scans_rnn(0)
+    # microns_across_scans.microns_across_scans_rnn(1)

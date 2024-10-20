@@ -7,6 +7,9 @@ import time
 import random
 
 
+def float_to_scientific(value, n=4):
+    return f"{value:.{n}e}"
+
 def pearson_correlation_with_nans(arr1, arr2):
     """
     Calculate the Pearson correlation for two arrays where each array has exactly one NaN.

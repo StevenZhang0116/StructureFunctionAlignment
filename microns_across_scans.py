@@ -25,7 +25,8 @@ def microns_across_scans(R_max, dimension, Kselect):
     directory_path = "./output/"
     pkl_files = find_pkl_files(directory_path)
     print(pkl_files)
-    assert len(pkl_files) == 10
+
+    # assert len(pkl_files) == 14
     
     coldata, rowdata, somadata = [], [], []
     rmax_quantiles = []
@@ -79,14 +80,25 @@ def microns_across_scans(R_max, dimension, Kselect):
     figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    indices = [[0,1,2,3,4],[5,6,7,8,9]]
+    showpermute = 0
+    if showpermute:
+        indices = [[0,1,2,3,4],[5,6,7,8,9]]
+    else:
+        indices = [[0,1,2],[3,4,5]]
+
 
     for i in range(len(alldata)):
         kk = 0
         xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
+
         slope, intercept, r_value, p_value, std_err = stats.linregress(xx, toactratio)
         print(f"p_value: {p_value}")
+
+        xx_line = np.linspace(np.min(xx), np.max(xx), 100)  
+        yy_line = slope * xx_line + intercept  
+        
         axs[i].scatter(xx, toactratio)
+        axs[i].plot(xx_line, yy_line, color='red', linestyle="--")
         axs[i].set_title(f"slope: {np.round(slope,3)}; r^2: {np.round(r_value**2,3)}")
         if kk == 1:
             axs[i].set_xlabel(f"{allmarks[i]} Primary Angle")
@@ -97,10 +109,10 @@ def microns_across_scans(R_max, dimension, Kselect):
         hypratio, eulratio, somaratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten(), alldata[i][:,7].flatten()
         hypratiopm, eulratiopm = alldata[i][:,5].flatten(), alldata[i][:,6].flatten()
 
-        # data = [hypratio, eulratio, toactratio, somaratio]
-        data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
-
-        # positions = [indices[i][0],indices[i][1],indices[i][2],indices[i][3],indices[i][4]]  
+        if showpermute:
+            data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
+        else:
+            data = [hypratio, eulratio, toactratio]
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
         violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
@@ -113,8 +125,11 @@ def microns_across_scans(R_max, dimension, Kselect):
     fig.tight_layout()
     fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
+    if showpermute:
+        names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
+    else:
+        names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
 
-    names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     axexp.axhline(1, c='red', linestyle='--')
@@ -167,8 +182,9 @@ def microns_across_scans_rnn(Kselect):
         column_primary_angle = None
         row_primary_angle = None
         allk_medians = data["allk_medians"][Kselect][ttind]
-        column_explainratio = allk_medians[1]/allk_medians[0]
-        row_explainratio = allk_medians[4]/allk_medians[0]
+        activity_ratio = allk_medians[0]
+        column_explainratio = allk_medians[1]
+        row_explainratio = allk_medians[4]
 
         soma_explainratio = None
 
@@ -178,8 +194,8 @@ def microns_across_scans_rnn(Kselect):
         out_hyp_ratio = allk_medians[5]-allk_medians[4]
         out_eul_ratio = allk_medians[6]-allk_medians[4]
 
-        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio])
-        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio])
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio, activity_ratio])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio, activity_ratio])
 
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
@@ -189,14 +205,16 @@ def microns_across_scans_rnn(Kselect):
     figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    indices = [[0,1,2],[3,4,5]]
+    indices = [[0,1,2,6],[3,4,5,6]]
 
     for i in range(len(alldata)):
         toactratio = alldata[i][:,2].flatten()
 
         hypratio, eulratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten()
 
-        data = [list(hypratio), list(eulratio), list(toactratio)]
+        actratio = alldata[i][:,6].flatten()
+
+        data = [list(hypratio), list(eulratio), list(toactratio), list(actratio)]
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
@@ -210,7 +228,7 @@ def microns_across_scans_rnn(Kselect):
     fig.tight_layout()
     fig.savefig(f"./output/zz_overall_rnn_K{Kselect}.png")
 
-    names = ["Hyp2Out", "Eul2Out", "Out2Act", "Hyp2In", "Eul2In", "In2Act"]
+    names = ["HypIn", "EulIn", "InAct", "HypOut", "EulOut", "OutAct", "Activity"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     # axexp.axhline(1, c='red', linestyle='--')
@@ -218,3 +236,9 @@ def microns_across_scans_rnn(Kselect):
 
     axexp.set_ylabel("Explanation Ratio")
     figexp.savefig(f"./output_rnn/zz_overall_exp_rnn_K{Kselect}.png")
+
+    colin, rowout = alldata[0][:,2].flatten(), alldata[1][:,2].flatten()
+    t_stat, p_value = stats.ttest_rel(colin, rowout)
+    p_value_one_sided = p_value / 2
+    p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
+    print(p_value_one_sided_final)

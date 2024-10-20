@@ -104,6 +104,9 @@ for i in range(50):
     hidden_states_np = hidden_states.detach().numpy().squeeze() 
     rnn_weight = rnn.rnn.h2h.weight.detach().numpy()
 
+    eigenvalues = np.linalg.eigvals(rnn_weight)    
+    radius = np.max(np.abs(eigenvalues))
+
     correlation_activity = np.corrcoef(hidden_states_np.T)  
 
     scipy.io.savemat(f"zz_data_rnn/rnn_connectome_out_{i}.mat", {'connectome': rnn_weight})
