@@ -19,8 +19,14 @@ def microns_parameter_search(dimension, Kselect):
         return None 
 
     directory = "./output/"
+    notwantR = ["1.250000e+00"]
+    npz_files = [
+        file for file in glob.glob(os.path.join(directory, "*.npz"))
+        if f"D{dimension}" in os.path.basename(file)
+        and f"K{Kselect}" in os.path.basename(file)
+        and not any(f"R{elem}" in os.path.basename(file) for elem in notwantR)
+    ]
 
-    npz_files = [file for file in glob.glob(os.path.join(directory, "*.npz")) if f"D{dimension}" in os.path.basename(file) and f"K{Kselect}" in os.path.basename(file)]
     r_files_pairs = [(float(extract_R_value(file)), file) for file in npz_files]
     r_files_pairs.sort(key=lambda pair: pair[0])
     r_values, npz_files = zip(*r_files_pairs)
@@ -35,22 +41,43 @@ def microns_parameter_search(dimension, Kselect):
     for i in range(len(npz_files)):
         file_path = npz_files[i]
         data = np.load(file_path, allow_pickle=True)["alldata"]
-        hypin = data[0][:,3]
-        hypout = data[1][:,3]
+        hypin = data[0][:,4]
+        hypout = data[1][:,4]
         hypin_data.append(hypin)
         hypout_data.append(hypout)
 
-    violin_parts_in = axscomparer[0].violinplot(hypin_data, positions=r_values, showmeans=False, showmedians=True, widths=0.1)
-    violin_parts_out = axscomparer[1].violinplot(hypout_data, positions=r_values, showmeans=False, showmedians=True, widths=0.1)
+    log_r_values = np.log10(r_values)
+    integer_power_indices = np.where(log_r_values == np.floor(log_r_values))[0] 
+    r_values_power_of_10 = log_r_values[integer_power_indices] 
+    tick_labels = [r'$10^{%d}$' % int(val) for val in log_r_values[integer_power_indices]]  
+
+    violin_parts_in = axscomparer[0].violinplot(hypin_data, positions=log_r_values, showmeans=False, showmedians=True, widths=0.15)
+    violin_parts_out = axscomparer[1].violinplot(hypout_data, positions=log_r_values, showmeans=False, showmedians=True, widths=0.15)
+
+    violin_parts = [violin_parts_in, violin_parts_out]
+
+    for i in range(len(violin_parts)):
+        medians = []
+        for j in range(len(npz_files)):
+            median_value = violin_parts[i]['cmedians'].get_paths()[j].vertices[0, 1]
+            medians.append(median_value)
+        axscomparer[i].plot(log_r_values, medians, color='black', linestyle='--')
+
+    for posindex in range(len(log_r_values)):
+        for datapt in hypin_data[posindex]:
+            axscomparer[0].scatter(log_r_values[posindex], datapt, color=c_vals[posindex])  
+        for datapt in hypout_data[posindex]:
+            axscomparer[1].scatter(log_r_values[posindex], datapt, color=c_vals[posindex])
 
     for violin_parts in [violin_parts_in, violin_parts_out]:
         for i, pc in enumerate(violin_parts['bodies']):
-            pc.set_facecolor(c_vals[i % len(c_vals)])  # Set the face color from the custom color list
-            pc.set_edgecolor('black')  # Optional: set the edge color to black
+            pc.set_facecolor(c_vals[i % len(c_vals)])  
+            pc.set_edgecolor('black')  
             pc.set_alpha(0.8) 
-
         
     for ax in axscomparer:
+        ax.set_xticks(r_values_power_of_10)
+        ax.set_xticklabels(tick_labels)
         ax.axhline(1, c='red', linestyle='--')
         ax.set_xlabel("R_max")
         ax.set_ylabel("Explanation Ratio")

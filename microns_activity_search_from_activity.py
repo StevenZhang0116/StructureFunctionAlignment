@@ -1037,7 +1037,7 @@ def all_run(R_max, embedding_dimension, raw_data):
 
 if __name__ == "__main__":
 
-    all_run(2,"1",False)
+    # all_run(2, "1",False)
 
     # for trial_index in range(50):
     #     try:
@@ -1046,5 +1046,5 @@ if __name__ == "__main__":
     #         print(e)
     #         continue
 
-    # microns_across_scans.microns_across_scans_rnn(0)
-    # microns_across_scans.microns_across_scans_rnn(1)
+    microns_across_scans.microns_across_scans_rnn(0)
+    microns_across_scans.microns_across_scans_rnn(1)

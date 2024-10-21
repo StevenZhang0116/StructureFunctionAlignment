@@ -35,6 +35,9 @@ def microns_across_scans(R_max, dimension, Kselect):
 
     timeselect = "all"
 
+    showpermute = 0
+    showactivity = 1
+
     for pkl_file_path in pkl_files:
         with open(pkl_file_path, 'rb') as file:
             data = pickle.load(file)
@@ -54,23 +57,36 @@ def microns_across_scans(R_max, dimension, Kselect):
         column_primary_angle = np.mean(data["column_angle"][0:cc])
         row_primary_angle = np.mean(data["row_angle"][0:cc])
         allk_medians = data["allk_medians"][Kselect][ttind]
-        column_explainratio = allk_medians[1]/allk_medians[0]
-        row_explainratio = allk_medians[4]/allk_medians[0]
 
-        soma_explainratio = allk_medians[7]/allk_medians[0]
+        activity_explain = allk_medians[0]
 
-        in_hyp_ratio = allk_medians[2]/allk_medians[1]
-        in_eul_ratio = allk_medians[3]/allk_medians[1]
+        if not showactivity:
+            column_explainratio = allk_medians[1]/allk_medians[0]
+            row_explainratio = allk_medians[4]/allk_medians[0]
+            soma_explainratio = allk_medians[7]/allk_medians[0]
+            in_hyp_ratio = allk_medians[2]/allk_medians[1]
+            in_eul_ratio = allk_medians[3]/allk_medians[1]
+            out_hyp_ratio = allk_medians[5]/allk_medians[4]
+            out_eul_ratio = allk_medians[6]/allk_medians[4]
+        else:
+            column_explainratio = allk_medians[1]
+            row_explainratio = allk_medians[4]
+            soma_explainratio = allk_medians[7]
+            in_hyp_ratio = allk_medians[2]
+            in_eul_ratio = allk_medians[3]
+            out_hyp_ratio = allk_medians[5]
+            out_eul_ratio = allk_medians[6]
+        
+        
         in_hyp_ratio_pm = allk_medians[8]/allk_medians[1]
         in_eul_ratio_pm = allk_medians[9]/allk_medians[1]
 
-        out_hyp_ratio = allk_medians[5]/allk_medians[4]
-        out_eul_ratio = allk_medians[6]/allk_medians[4]
+        
         out_hyp_ratio_pm = allk_medians[10]/allk_medians[4]
         out_eul_ratio_pm = allk_medians[11]/allk_medians[4]
 
-        coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio])
-        rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio])
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio])
 
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
@@ -80,16 +96,20 @@ def microns_across_scans(R_max, dimension, Kselect):
     figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    showpermute = 0
+    
     if showpermute:
         indices = [[0,1,2,3,4],[5,6,7,8,9]]
     else:
-        indices = [[0,1,2],[3,4,5]]
+        if not showactivity:
+            indices = [[0,1,2],[3,4,5]]
+        else:
+            indices = [[0,1,2,3],[4,5,6,3]]
 
 
     for i in range(len(alldata)):
         kk = 0
         xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
+        activity_base = alldata[i][:,3].flatten()
 
         slope, intercept, r_value, p_value, std_err = stats.linregress(xx, toactratio)
         print(f"p_value: {p_value}")
@@ -106,16 +126,24 @@ def microns_across_scans(R_max, dimension, Kselect):
             axs[i].set_xlabel(f"Number of Neurons")
         axs[i].set_ylabel(f"{allmarks[i]} Explain Ratio")
 
-        hypratio, eulratio, somaratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten(), alldata[i][:,7].flatten()
-        hypratiopm, eulratiopm = alldata[i][:,5].flatten(), alldata[i][:,6].flatten()
+        hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,8].flatten()
+        hypratiopm, eulratiopm = alldata[i][:,6].flatten(), alldata[i][:,7].flatten()
 
         if showpermute:
             data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
         else:
-            data = [hypratio, eulratio, toactratio]
+            if not showactivity:
+                data = [hypratio, eulratio, toactratio]
+            else:
+                data = [hypratio, eulratio, toactratio, activity_base]
+
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
         violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
+
+        for posindex in range(len(positions)):
+            for datapt in data[posindex]:
+                axexp.scatter(positions[posindex], datapt, color=c_vals[positions[posindex]]) 
 
         for j, body in enumerate(violin_parts['bodies']):
             body.set_facecolor(c_vals[indices[i][j]])  # Set color for each violin
@@ -132,7 +160,8 @@ def microns_across_scans(R_max, dimension, Kselect):
 
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
-    axexp.axhline(1, c='red', linestyle='--')
+    if not showactivity:
+        axexp.axhline(1, c='red', linestyle='--')
 
     axexp.set_ylabel("Explanation Ratio")
     figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
@@ -188,11 +217,11 @@ def microns_across_scans_rnn(Kselect):
 
         soma_explainratio = None
 
-        in_hyp_ratio = allk_medians[2]-allk_medians[1]
-        in_eul_ratio = allk_medians[3]-allk_medians[1]
+        in_hyp_ratio = allk_medians[2]
+        in_eul_ratio = allk_medians[3]
 
-        out_hyp_ratio = allk_medians[5]-allk_medians[4]
-        out_eul_ratio = allk_medians[6]-allk_medians[4]
+        out_hyp_ratio = allk_medians[5]
+        out_eul_ratio = allk_medians[6]
 
         coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio, activity_ratio])
         rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio, activity_ratio])
@@ -220,6 +249,10 @@ def microns_across_scans_rnn(Kselect):
 
         violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
 
+        for posindex in range(len(positions)):
+            for datapt in data[posindex]:
+                axexp.scatter(positions[posindex], datapt, color=c_vals[positions[posindex]]) 
+
         for j, body in enumerate(violin_parts['bodies']):
             body.set_facecolor(c_vals[indices[i][j]])  # Set color for each violin
             body.set_edgecolor('black')             # Optionally set edge color
@@ -234,7 +267,8 @@ def microns_across_scans_rnn(Kselect):
     # axexp.axhline(1, c='red', linestyle='--')
     # axexp.set_ylim([-1,1])
 
-    axexp.set_ylabel("Explanation Ratio")
+    axexp.set_ylabel("Correlation")
+    figexp.tight_layout()
     figexp.savefig(f"./output_rnn/zz_overall_exp_rnn_K{Kselect}.png")
 
     colin, rowout = alldata[0][:,2].flatten(), alldata[1][:,2].flatten()
