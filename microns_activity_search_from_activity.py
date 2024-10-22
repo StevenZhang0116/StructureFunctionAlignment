@@ -4,6 +4,7 @@ import time
 import seaborn as sns 
 import matplotlib.pyplot as plt 
 from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.ticker as ticker
 import xarray as xr
 from scipy.stats import pearsonr
 import pickle
@@ -234,8 +235,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         np.fill_diagonal(activity_correlation,0)
 
         dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr, activity_correlation)
-
         metadata[f"{correlation_index}_angle"] = angle_loader
+
+        if correlation_index == "column":
+            # do another benchmark plotting for random matrix
+            # should have the same range of correlation, [-1,1]
+            repeat_random = 1000
+            angle_all = []
+            for _ in range(repeat_random):
+                random_matrix = 2 * np.random.rand(*W_corr.shape) - 1
+                dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(random_matrix, activity_correlation)
+                angle_all.append(angle_loader)
+            angle_all = np.array(angle_all)
+            
+            metadata[f"random_angle"] = np.mean(angle_all, axis=0)
+            metadata[f"random_angle_std"] = np.std(angle_all, axis=0)
 
     fig.tight_layout()
     fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_heatmap.png")
@@ -332,13 +346,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsallcompare[0].legend()
         axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
 
+        correlation_index_lst.append("random")
+
         for correlation_index in correlation_index_lst:
             axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
                                     label=f"{correlation_index}", color=c_vals[correlation_index_lst.index(correlation_index)])
+            if correlation_index == "random":
+                axsallcompare[1].fill_between([i+1 for i in range(len(metadata[f"random_angle"]))], metadata[f"random_angle"] - metadata[f"random_angle_std"], \
+                                     metadata[f"random_angle"] + metadata[f"random_angle_std"], color=c_vals_l[correlation_index_lst.index(correlation_index)])
+        print(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
+
         axsallcompare[1].legend()
         axsallcompare[1].set_xlabel("Angle Index")
         axsallcompare[1].set_ylabel("Angle")
         axsallcompare[1].set_title("Subspace Angle")
+        axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
 
         figallcompare.tight_layout()
         figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
@@ -1026,7 +1048,7 @@ def benchmark_with_rnn(trial_index):
 
 def all_run(R_max, embedding_dimension, raw_data):
     # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
-    session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
+    session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[8,5],[9,3],[9,4]]
     for_construction = 1
     for ss in session_scan:
         run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)

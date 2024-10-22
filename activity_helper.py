@@ -159,7 +159,7 @@ def angles_between_flats(v_lst, u_lst):
     
     return smallest_angle_degrees
 
-def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=20):
+def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=16):
     """
     """
     U_connectome, S_connectome, Vh_connectome = np.linalg.svd(W_corr)

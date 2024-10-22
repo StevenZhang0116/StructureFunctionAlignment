@@ -37,6 +37,7 @@ def microns_across_scans(R_max, dimension, Kselect):
 
     showpermute = 0
     showactivity = 1
+    showminimal = 1
 
     for pkl_file_path in pkl_files:
         with open(pkl_file_path, 'rb') as file:
@@ -93,9 +94,11 @@ def microns_across_scans(R_max, dimension, Kselect):
     allmarks = ["In-Correlation", "Out-Correlation"]
 
     fig, axs = plt.subplots(1,2,figsize=(4*2,4))
-    figexp, axexp = plt.subplots(1,1,figsize=(4,4))
+    if showminimal:
+        figexp, axexp = plt.subplots(1,1,figsize=(2,4))
+    else:
+        figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
-
     
     if showpermute:
         indices = [[0,1,2,3,4],[5,6,7,8,9]]
@@ -103,12 +106,15 @@ def microns_across_scans(R_max, dimension, Kselect):
         if not showactivity:
             indices = [[0,1,2],[3,4,5]]
         else:
-            indices = [[0,1,2,3],[4,5,6,3]]
+            if showminimal:
+                indices = [[0,1,4],[2,3,4]]
+            else:
+                indices = [[0,1,2,6],[3,4,5,6]]
 
 
     for i in range(len(alldata)):
         kk = 0
-        xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
+        xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,3].flatten()
         activity_base = alldata[i][:,3].flatten()
 
         slope, intercept, r_value, p_value, std_err = stats.linregress(xx, toactratio)
@@ -120,11 +126,12 @@ def microns_across_scans(R_max, dimension, Kselect):
         axs[i].scatter(xx, toactratio)
         axs[i].plot(xx_line, yy_line, color='red', linestyle="--")
         axs[i].set_title(f"slope: {np.round(slope,3)}; r^2: {np.round(r_value**2,3)}")
+
         if kk == 1:
             axs[i].set_xlabel(f"{allmarks[i]} Primary Angle")
         elif kk == 0:
             axs[i].set_xlabel(f"Number of Neurons")
-        axs[i].set_ylabel(f"{allmarks[i]} Explain Ratio")
+        axs[i].set_ylabel(f"{allmarks[i]} Explain Ratio" if not showactivity else f"{allmarks[i]} Correlation")
 
         hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,8].flatten()
         hypratiopm, eulratiopm = alldata[i][:,6].flatten(), alldata[i][:,7].flatten()
@@ -135,7 +142,10 @@ def microns_across_scans(R_max, dimension, Kselect):
             if not showactivity:
                 data = [hypratio, eulratio, toactratio]
             else:
-                data = [hypratio, eulratio, toactratio, activity_base]
+                if showminimal:
+                    data = [hypratio, toactratio, activity_base]
+                else:
+                    data = [hypratio, eulratio, toactratio, activity_base]
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
@@ -156,14 +166,22 @@ def microns_across_scans(R_max, dimension, Kselect):
     if showpermute:
         names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
     else:
-        names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
+        if showminimal:
+            names = ["Hyp2In", "In2Act", "Hyp2Out", "Out2Act", "Activity"]
+        else:
+            names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
 
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     if not showactivity:
         axexp.axhline(1, c='red', linestyle='--')
 
-    axexp.set_ylabel("Explanation Ratio")
+    if showactivity:
+        axexp.set_ylabel("Correlation")
+    else:
+        axexp.set_ylabel("Explanation Ratio")
+
+    figexp.tight_layout()
     figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}.png")
 
     rmax_quantiles = np.array(rmax_quantiles)
@@ -188,6 +206,8 @@ def microns_across_scans_rnn(Kselect):
     directory_path = "./output_rnn/"
     pkl_files = find_pkl_files(directory_path)
     print(pkl_files)
+
+    showminimal = 1
     
     coldata, rowdata, somadata = [], [], []
     rmax_quantiles = []
@@ -231,10 +251,16 @@ def microns_across_scans_rnn(Kselect):
     allmarks = ["In-Correlation", "Out-Correlation"]
 
     fig, axs = plt.subplots(1,2,figsize=(4*2,4))
-    figexp, axexp = plt.subplots(1,1,figsize=(4,4))
+    if showminimal:
+        figexp, axexp = plt.subplots(1,1,figsize=(2,4))
+    else:
+        figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
-    indices = [[0,1,2,6],[3,4,5,6]]
+    if showminimal:
+        indices = [[0,1,4],[2,3,4]]
+    else:
+        indices = [[0,1,2,6],[3,4,5,6]]
 
     for i in range(len(alldata)):
         toactratio = alldata[i][:,2].flatten()
@@ -243,7 +269,10 @@ def microns_across_scans_rnn(Kselect):
 
         actratio = alldata[i][:,6].flatten()
 
-        data = [list(hypratio), list(eulratio), list(toactratio), list(actratio)]
+        if showminimal:
+            data = [list(hypratio), list(toactratio), list(actratio)]
+        else:
+            data = [list(hypratio), list(eulratio), list(toactratio), list(actratio)]
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
@@ -259,15 +288,19 @@ def microns_across_scans_rnn(Kselect):
             body.set_alpha(0.7)                     # Set transparency (optional)
 
     fig.tight_layout()
-    fig.savefig(f"./output/zz_overall_rnn_K{Kselect}.png")
+    fig.savefig(f"./output_rnn/zz_overall_rnn_K{Kselect}.png")
 
-    names = ["HypIn", "EulIn", "InAct", "HypOut", "EulOut", "OutAct", "Activity"]
+    if showminimal:
+        names = ["HypIn", "InAct", "HypOut", "OutAct", "Activity"]
+    else:
+        ames = ["HypIn", "EulIn", "InAct", "HypOut", "EulOut", "OutAct", "Activity"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     # axexp.axhline(1, c='red', linestyle='--')
     # axexp.set_ylim([-1,1])
 
-    axexp.set_ylabel("Correlation")
+    if not showminimal:
+        axexp.set_ylabel("Correlation")
     figexp.tight_layout()
     figexp.savefig(f"./output_rnn/zz_overall_exp_rnn_K{Kselect}.png")
 
