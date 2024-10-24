@@ -37,7 +37,8 @@ c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#71
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
 def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data):
-
+    """
+    """
     metadata = {}
 
     # index
@@ -293,6 +294,13 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_connectome_in.mat", {'connectome': in_sample_trc})
     scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_activity.mat", {'activity': activity_extraction_extra_trc})
 
+    # Betti analysis
+    if R_max == "1": # only do it once
+        data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc]
+        names = ["activity", "connectome_out", "connectome_in"]
+        assert data_lst[0].shape == data_lst[1].shape == data_lst[2].shape
+        activity_helper.betti_analysis(data_lst, names, label=f"zz_S{session_info}s{scan_info}")
+
 
     soma_distances_trc = np.delete(soma_distances, neurons_tobe_deleted, axis=0)  
     soma_distances_trc = np.delete(soma_distances_trc, neurons_tobe_deleted, axis=1)
@@ -338,7 +346,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         p_value_one_sided = p_value / 2
         p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
 
-        figallcompare, axsallcompare = plt.subplots(1,2,figsize=(4*2,4))
+        figallcompare, axsallcompare = plt.subplots(2,1,figsize=(4,4)) # purposefully not square for paper purpose
         axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
         axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
         axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
@@ -357,7 +365,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         print(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
 
         axsallcompare[1].legend()
-        axsallcompare[1].set_xlabel("Angle Index")
+        # axsallcompare[1].set_xlabel("Angle Index")
         axsallcompare[1].set_ylabel("Angle")
         axsallcompare[1].set_title("Subspace Angle")
         axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
@@ -718,8 +726,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     session_ds.close()
 
-def benchmark_with_rnn(trial_index):
+def all_run(R_max, embedding_dimension, raw_data):
+    """
+    """
+    # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
+    session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
+    for_construction = 1
+    for ss in session_scan:
+        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)
+        gc.collect()
 
+    gc.collect()
+
+def benchmark_with_rnn(trial_index):
+    """
+    """
     activity_extraction_extra_trc = scipy.io.loadmat(f"./zz_data_rnn/rnn_activity_{trial_index}.mat")['activity']
     activity_extraction_extra = activity_extraction_extra_trc
     activity_correlation_all_trc = np.corrcoef(activity_extraction_extra_trc, rowvar=True)
@@ -1046,15 +1067,7 @@ def benchmark_with_rnn(trial_index):
         pickle.dump(metadata, pickle_file)
 
 
-def all_run(R_max, embedding_dimension, raw_data):
-    # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
-    session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[8,5],[9,3],[9,4]]
-    for_construction = 1
-    for ss in session_scan:
-        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)
-        gc.collect()
 
-    gc.collect()
     
 
 if __name__ == "__main__":
