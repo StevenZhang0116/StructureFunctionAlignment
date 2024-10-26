@@ -12,7 +12,7 @@ from sklearn.metrics import mean_squared_error
 from scipy.interpolate import CubicSpline
 
 import sys
-sys.path.append("../pyclique/")
+sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
 import compute_betti_curves
 
 import scienceplots
@@ -333,18 +333,22 @@ def betti_analysis(data_lst, inputnames, label=""):
             allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
 
         allerrs = np.array(allerrs)
+        fakeallbettis = []
         for index in range(3): # for each correlation matrix
             minerr_index = np.argmin(allerrs[:,index])
             synthetic_best = allsynthetic[minerr_index]
             axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
-            realbetti, fakebetti = groundtruth_bettis[index], fake_integrated_bettis[minerr_index]
+            realbetti, fakebetti = groundtruth_integratedbettis[index], fake_integrated_bettis[minerr_index]
             print(realbetti)
             print(fakebetti)
-            print("====")
+            fakeallbettis.append([realbetti, fakebetti])
             for i in range(3):
                 edge_densities = synthetic_best[2]
                 axs[index].plot(edge_densities, synthetic_best[0][i], c=colorset[iii][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
                 axs[index].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
+
+        np.save(f'./zz_pyclique_results/{label}_bettis.npy', np.array(fakeallbettis))
+
 
     fig.savefig(f"./zz_pyclique_results/{label}.png")
     time.sleep(1000)

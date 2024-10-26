@@ -57,6 +57,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     matching_axon = cell_table.index[cell_table["status_axon"].isin(["extended", "clean"])].tolist()
     matching_dendrite = cell_table.index[cell_table["full_dendrite"] == True].tolist()
 
+    good_ct = cell_table[(cell_table["status_axon"] == "extended") & (cell_table["full_dendrite"] == True)]
+    good_ct_indices = good_ct.index.tolist()
+
+
     # cell_table = cell_table.sort_values(by='cell_type')
     synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
 
@@ -138,6 +142,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     metadata["gt_median_corr"] = gt_median_corr
 
     W_all, totalSyn, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
+    W_goodneurons = synCount[np.ix_(good_ct_indices, good_ct_indices)]
+    print(W_goodneurons.shape)
+    time.sleep(1000)
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
 
