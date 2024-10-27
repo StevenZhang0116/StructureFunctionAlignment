@@ -60,6 +60,7 @@ def remove_nan_inf_union(matrix):
     """
     """
     print(f"Before: {matrix.shape}")
+    
     nan_inf_rows = np.all(np.isnan(matrix) | np.isinf(matrix), axis=1)
     nan_inf_columns = np.all(np.isnan(matrix) | np.isinf(matrix), axis=0)
 
@@ -74,7 +75,6 @@ def remove_nan_inf_union(matrix):
     print(f"After: {smaller_matrix.shape}")
 
     return smaller_matrix
-
 
 def cosine_similarity(arr1, arr2):
     """
@@ -230,15 +230,20 @@ def betti_analysis(data_lst, inputnames, label=""):
     originally implemented in microns_activity_analysis.py
     data_lst: [activity_correlation, structure_correlation]
     """
-    assert len(data_lst) == 3
+    print(label)
+    assert len(data_lst) == 5
     Nneuron = data_lst[0].shape[0]
+
+    if label == "S8s5":
+        figgood, axsgood = plt.subplots(1,2,figsize=(4*2,4))
 
     fig, axs = plt.subplots(1,3,figsize=(4*3,4))
 
     groundtruth_bettis = [] # for 3 correlation matrix (3 bettis)
     groundtruth_integratedbettis = []
 
-    for index in range(3):
+    for index in range(len(data_lst)):
+        print(index)
         groundtruth_betti, groundtruth_integratedbetti = [], [] # for 1 correlation matrix (3 bettis)
         data = data_lst[index]
 
@@ -252,13 +257,20 @@ def betti_analysis(data_lst, inputnames, label=""):
             consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
             integrated_betti = np.sum([a * b for a, b in zip(curve, consecutive_differences)])
             groundtruth_integratedbetti.append(integrated_betti)
-            axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+            if index <= 2:
+                axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+            elif label == "S8s5" and index > 2: # only do this once for one scan
+                axsgood[index-3].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
             groundtruth_betti.append(curve)
 
         groundtruth_bettis.append(groundtruth_betti)
         groundtruth_integratedbettis.append(groundtruth_integratedbetti)
 
-    # print(groundtruth_integratedbettis)
+    fig.savefig(f"./zz_pyclique_results/{label}.png")
+    figgood.savefig(f"./zz_pyclique_results/connectome_good.png")
+    print("done")
+    time.sleep(10000)
+
     
     repeat = 500
     dimension = 2

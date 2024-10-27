@@ -57,7 +57,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     matching_axon = cell_table.index[cell_table["status_axon"].isin(["extended", "clean"])].tolist()
     matching_dendrite = cell_table.index[cell_table["full_dendrite"] == True].tolist()
 
-    good_ct = cell_table[(cell_table["status_axon"] == "extended") & (cell_table["full_dendrite"] == True)]
+    # choose structural confident neurons
+    good_ct = cell_table[(cell_table["status_axon"].isin(["extended"])) & (cell_table["full_dendrite"] == True)]
     good_ct_indices = good_ct.index.tolist()
 
 
@@ -143,8 +144,13 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     W_all, totalSyn, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
     W_goodneurons = synCount[np.ix_(good_ct_indices, good_ct_indices)]
-    print(W_goodneurons.shape)
-    time.sleep(1000)
+    # this information should be consistently identical reguardless of scans/R_max
+    W_goodneurons_row = np.corrcoef(W_goodneurons, rowvar=True)
+    W_goodneurons_col = np.corrcoef(W_goodneurons, rowvar=False)
+
+    W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
+    W_goodneurons_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
+
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
 
@@ -303,10 +309,15 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     # Betti analysis
     if R_max == "1": # only do it once
-        data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc]
-        names = ["activity", "connectome_out", "connectome_in"]
+        plt.figure()
+        sns.heatmap(W_goodneurons_row, cbar=True, square=True, center=0)
+        plt.savefig("zzzzzzzz.png")
+        print("done")
+        time.sleep(10000)
+        data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
+        names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
         assert data_lst[0].shape == data_lst[1].shape == data_lst[2].shape
-        activity_helper.betti_analysis(data_lst, names, label=f"zz_S{session_info}s{scan_info}")
+        activity_helper.betti_analysis(data_lst, names, label=f"S{session_info}s{scan_info}")
 
 
     soma_distances_trc = np.delete(soma_distances, neurons_tobe_deleted, axis=0)  
