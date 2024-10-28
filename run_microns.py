@@ -9,11 +9,8 @@ if __name__ == "__main__":
     R_max_lst = ["1"]
     D = 2
 
-    # R_max_lst = ["1.000000e-01"]
-    # D = 3
-
     for R_max in R_max_lst:
-        all_run(R_max, D, False)
+        all_run(R_max, D, False, "noise")
         microns_across_scans(R_max, D, 0)
         microns_across_scans(R_max, D, 1)
     

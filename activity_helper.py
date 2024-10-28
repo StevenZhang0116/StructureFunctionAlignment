@@ -6,6 +6,7 @@ from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 import time
 import random
+import gc
 
 import scipy 
 from sklearn.metrics import mean_squared_error
@@ -22,6 +23,8 @@ plt.style.use(['no-latex'])
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#2d3748', '#97266d', '#975a16',]
+colorset = [c_vals_l, c_vals_d]
+lines = ["-.", "--"]
 
 def float_to_scientific(value, n=4):
     return f"{value:.{n}e}"
@@ -60,7 +63,7 @@ def remove_nan_inf_union(matrix):
     """
     """
     print(f"Before: {matrix.shape}")
-    
+
     nan_inf_rows = np.all(np.isnan(matrix) | np.isinf(matrix), axis=1)
     nan_inf_columns = np.all(np.isnan(matrix) | np.isinf(matrix), axis=0)
 
@@ -218,6 +221,7 @@ def moving_average(data, window_size):
 def spline_set(y):
     """
     """
+    spt = 3000
     x = [(i+1)/len(y) for i in range(len(y))]
     x_new = np.linspace(0, 1, spt)
     cs = CubicSpline(x, y)
@@ -232,9 +236,12 @@ def betti_analysis(data_lst, inputnames, label=""):
     """
     print(label)
     assert len(data_lst) == 5
+    doconnectome = (label == "S8s5")
     Nneuron = data_lst[0].shape[0]
+    NneuronWrow = data_lst[3].shape[0]
+    NneuronWcol = data_lst[4].shape[0]
 
-    if label == "S8s5":
+    if doconnectome:
         figgood, axsgood = plt.subplots(1,2,figsize=(4*2,4))
 
     fig, axs = plt.subplots(1,3,figsize=(4*3,4))
@@ -243,10 +250,10 @@ def betti_analysis(data_lst, inputnames, label=""):
     groundtruth_integratedbettis = []
 
     for index in range(len(data_lst)):
-        print(index)
-        groundtruth_betti, groundtruth_integratedbetti = [], [] # for 1 correlation matrix (3 bettis)
         data = data_lst[index]
-
+        print(f"Data Shape: {data.shape}")
+        groundtruth_betti, groundtruth_integratedbetti = [], [] # for 1 correlation matrix (3 bettis)
+        
         [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(data)
         # dd = int(len(edge_densities)/100)
         dd = 1
@@ -259,31 +266,34 @@ def betti_analysis(data_lst, inputnames, label=""):
             groundtruth_integratedbetti.append(integrated_betti)
             if index <= 2:
                 axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
-            elif label == "S8s5" and index > 2: # only do this once for one scan
+            elif doconnectome and index > 2: # only do this once for one scan
                 axsgood[index-3].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
             groundtruth_betti.append(curve)
 
         groundtruth_bettis.append(groundtruth_betti)
         groundtruth_integratedbettis.append(groundtruth_integratedbetti)
 
-    fig.savefig(f"./zz_pyclique_results/{label}.png")
-    figgood.savefig(f"./zz_pyclique_results/connectome_good.png")
-    print("done")
-    time.sleep(10000)
-
-    
     repeat = 500
     dimension = 2
-    noise = 0.0625
+    noise = 0.2
     readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
     readin_files_lst = [readin_hypfile]
     names = ["Eul", "Hyp"]
-    colorset = [c_vals_l, c_vals_d]
-    lines = ["-.", "--"]
+    
+    if doconnectome:
+        readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWrow}_repeat={repeat}_dim_{dimension}noise_{noise}.mat", \
+                            f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"]
+        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise)
+
+        for ax in axsgood:
+            ax.legend() 
+        figgood.savefig(f"./zz_pyclique_results/gt_connectome.png")
+
+        sys.exit()
+
 
     for iii in range(len(readin_files_lst)):
         readin_files = readin_files_lst[iii]
-        spt = 3000
         select = ""
 
         data = scipy.io.loadmat(readin_files)
@@ -319,7 +329,7 @@ def betti_analysis(data_lst, inputnames, label=""):
                     thisbetti[i].append(betti_curves[:,i+1])
 
             thisbetti = [np.array(subbetti) for subbetti in thisbetti]
-            meanbetti = [moving_average(np.mean(subbetti, axis=0),dd) for subbetti in thisbetti]
+            meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
             fake_integrated_betti = []
             for jjj in range(3):
                 consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
@@ -328,13 +338,6 @@ def betti_analysis(data_lst, inputnames, label=""):
             stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
 
             fake_integrated_bettis.append(fake_integrated_betti)
-            
-            def spline_set(y):
-                x = [(i+1)/len(y) for i in range(len(y))]
-                x_new = np.linspace(0, 1, spt)
-                cs = CubicSpline(x, y)
-                y_new = cs(x_new)
-                return y_new
             
             oneerr = []
             for j in range(3):
@@ -346,7 +349,7 @@ def betti_analysis(data_lst, inputnames, label=""):
 
         allerrs = np.array(allerrs)
         fakeallbettis = []
-        for index in range(3): # for each correlation matrix
+        for index in range(allerrs.shape[1]): # for each correlation matrix
             minerr_index = np.argmin(allerrs[:,index])
             synthetic_best = allsynthetic[minerr_index]
             axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
@@ -366,3 +369,86 @@ def betti_analysis(data_lst, inputnames, label=""):
     time.sleep(1000)
 
 
+def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, groundtruth_integratedbettis, repeat, dd, noise):
+    """
+    redundant to [betti_analysis] function
+    separate for better readability
+    """
+    assert len(groundtruth_bettis) == len(groundtruth_integratedbettis) == 2
+    names = ["row", "col"]
+
+    for iii in range(len(readin_W_hypfiles)):
+        readin_files = readin_W_hypfiles[iii]
+        select = ""
+
+        data = scipy.io.loadmat(readin_files)
+        data = data['distance_matrices']
+
+        if isinstance(data, dict):
+            data_keys = data.keys()
+            fields = sorted([key for key in data_keys if not key.startswith('__')])
+        else:
+            fields = sorted(data.dtype.names)
+
+        fields = sorted(fields, key=lambda x: int(x.split('_')[1]))
+        print(f"fields: {fields}")
+
+        allerrs = []
+        allsynthetic = []
+        fake_integrated_bettis = []
+
+        for fieldNameIter in range(len(fields)):
+            thisbetti = [[],[],[]]
+            fieldName = fields[fieldNameIter]
+            print(f"fieldName: {fieldName}")
+            if isinstance(data, dict):
+                currentMatrix = data[fieldName]
+            else:
+                currentMatrix = data[fieldName][0, 0]
+
+            for i in range(repeat):
+                # print(f'Number: {i+1}')
+                squeeze_mat = np.squeeze(currentMatrix[i, :, :])
+                [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(squeeze_mat)
+                for i in range(3):
+                    thisbetti[i].append(betti_curves[:,i+1])
+
+                del squeeze_mat
+                gc.collect()
+
+            thisbetti = [np.array(subbetti) for subbetti in thisbetti]
+            meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
+            fake_integrated_betti = []
+            for jjj in range(3):
+                consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
+                integrated_betti = np.sum([a * b for a, b in zip(meanbetti[jjj], consecutive_differences)])
+                fake_integrated_betti.append(integrated_betti)
+            stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
+
+            fake_integrated_bettis.append(fake_integrated_betti)
+            
+            oneerr = []
+            errbetti = [mean_squared_error(spline_set(meanbetti[i]), spline_set(groundtruth_bettis[iii][i])) for i in range(3)]
+            oneerr.append(np.sum(errbetti))
+            allerrs.append(oneerr)
+
+            allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
+
+            del thisbetti, meanbetti, stdbetti 
+            gc.collect()
+
+        allerrs = np.array(allerrs)
+        fakeallbettis = []
+        minerr_index = np.argmin(allerrs)
+        synthetic_best = allsynthetic[minerr_index]
+        realbetti, fakebetti = groundtruth_integratedbettis[iii], fake_integrated_bettis[iii]
+        fakeallbettis.append([realbetti, fakebetti])
+        for i in range(3):
+            edge_densities = synthetic_best[2]
+            ax[iii].plot(edge_densities, synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
+            ax[iii].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
+
+        np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}.npy', np.array(fakeallbettis))
+
+        del allerrs, allsynthetic, fake_integrated_bettis 
+        gc.collect()

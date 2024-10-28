@@ -36,9 +36,11 @@ from netrep.metrics import LinearMetric
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data):
+def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, whether_noise):
     """
     """
+    assert whether_noise in ["noise", "normal"]
+
     metadata = {}
 
     # index
@@ -54,13 +56,16 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # read in microns cell/synapse information
     cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240524.feather")
 
-    matching_axon = cell_table.index[cell_table["status_axon"].isin(["extended", "clean"])].tolist()
-    matching_dendrite = cell_table.index[cell_table["full_dendrite"] == True].tolist()
+    if whether_noise == "normal":
+        matching_axon = cell_table.index[cell_table["status_axon"].isin(["extended", "clean"])].tolist()
+        matching_dendrite = cell_table.index[cell_table["full_dendrite"] == True].tolist()
+    else:
+        matching_axon = cell_table.index.tolist()
+        matching_dendrite = cell_table.index.tolist()
 
     # choose structural confident neurons
     good_ct = cell_table[(cell_table["status_axon"].isin(["extended"])) & (cell_table["full_dendrite"] == True)]
     good_ct_indices = good_ct.index.tolist()
-
 
     # cell_table = cell_table.sort_values(by='cell_type')
     synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
@@ -150,7 +155,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
     W_goodneurons_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
-
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
 
@@ -266,7 +270,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             metadata[f"random_angle_std"] = np.std(angle_all, axis=0)
 
     fig.tight_layout()
-    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_heatmap.png")
+    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_heatmap.png")
 
     def merge_arrays(arrays):
         union_result = arrays[0]    
@@ -307,18 +311,13 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_connectome_in.mat", {'connectome': in_sample_trc})
     scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_activity.mat", {'activity': activity_extraction_extra_trc})
 
+    bettiindex = False
     # Betti analysis
-    if R_max == "1": # only do it once
-        plt.figure()
-        sns.heatmap(W_goodneurons_row, cbar=True, square=True, center=0)
-        plt.savefig("zzzzzzzz.png")
-        print("done")
-        time.sleep(10000)
+    if R_max == "1" and bettiindex: # only do it once
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
         assert data_lst[0].shape == data_lst[1].shape == data_lst[2].shape
         activity_helper.betti_analysis(data_lst, names, label=f"S{session_info}s{scan_info}")
-
 
     soma_distances_trc = np.delete(soma_distances, neurons_tobe_deleted, axis=0)  
     soma_distances_trc = np.delete(soma_distances_trc, neurons_tobe_deleted, axis=1)
@@ -380,7 +379,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             if correlation_index == "random":
                 axsallcompare[1].fill_between([i+1 for i in range(len(metadata[f"random_angle"]))], metadata[f"random_angle"] - metadata[f"random_angle_std"], \
                                      metadata[f"random_angle"] + metadata[f"random_angle_std"], color=c_vals_l[correlation_index_lst.index(correlation_index)])
-        print(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
+        # print(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_offdiagcompare_all.png")
 
         axsallcompare[1].legend()
         # axsallcompare[1].set_xlabel("Angle Index")
@@ -389,7 +388,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
 
         figallcompare.tight_layout()
-        figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_offdiagcompare_all.png")
+        figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_offdiagcompare_all.png")
     
         hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
         out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][1]
@@ -476,8 +475,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axssanity[0,jj].set_title(f"{datas_names[jj]}")
             axssanity[1,jj].set_title(f"{datas_names[jj]}: {np.round(r_squared,4)}")
 
-
-        figsanity.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_sanity.png")
+        figsanity.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_sanity.png")
 
         # Top K neurons of consideration
         topK_values = ["all", int(W_corr.shape[0]/2)]
@@ -540,7 +538,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         sns.heatmap(input_matrics_rank_diff, ax=axcorr[1], cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".1f", \
                     xticklabels=reconstruction_names[:-1], yticklabels=reconstruction_names[:-1])
         figcorr.tight_layout()
-        figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_corrcompare_D{embedding_dimension}_R{R_max}.png")
+        figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_corrcompare_D{embedding_dimension}_R{R_max}.png")
 
         # PSD
         def compute_psd(trace, fs):
@@ -704,10 +702,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 ax.set_xlabel("Correlation")
                 ax.set_ylabel("Frequency")
 
-        figact1.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare1_D{embedding_dimension}_R{R_max}.png")
-        figact2.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare2_D{embedding_dimension}_R{R_max}.png")
-        figact3.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare3_D{embedding_dimension}_R{R_max}.png")
-        figact4.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompare4_D{embedding_dimension}_R{R_max}.png")
+        figact1.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare1_D{embedding_dimension}_R{R_max}.png")
+        figact2.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare2_D{embedding_dimension}_R{R_max}.png")
+        figact3.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare3_D{embedding_dimension}_R{R_max}.png")
+        figact4.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare4_D{embedding_dimension}_R{R_max}.png")
 
 
         figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(10*len(allk_medians),10))
@@ -732,26 +730,25 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             ax.set_xlabel("Window Length")
             ax.set_ylabel("Median Correlation")
 
-        
 
-        figactshow.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
+        figactshow.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
 
         metadata["timeuplst"] = timeuplst
         metadata["allk_medians"] = allk_medians
         
-        with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
+        with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()
 
-def all_run(R_max, embedding_dimension, raw_data):
+def all_run(R_max, embedding_dimension, raw_data, whether_noise):
     """
     """
     # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
     session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
     for_construction = 1
     for ss in session_scan:
-        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data)
+        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, whether_noise=whether_noise)
         gc.collect()
 
     gc.collect()
