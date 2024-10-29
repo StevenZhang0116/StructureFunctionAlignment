@@ -26,22 +26,27 @@ import sys
 sys.path.append("../")
 sys.path.append("../../")
 sys.path.append("../../../")
+sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/mixture")
+
 import helper
 import activity_helper
+import mix_helper
 
 import microns_across_scans
-
-from netrep.metrics import LinearMetric
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, whether_noise):
+def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, whethernoise):
     """
     """
-    assert whether_noise in ["noise", "normal"]
+    assert whethernoise in ["noise", "normal"]
 
     metadata = {}
+
+    metadata["session_info"] = session_info
+    metadata["scan_info"] = scan_info
+    metadata["whethernoise"] = whethernoise
 
     # index
     metric_compare = "correlation"
@@ -56,12 +61,20 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # read in microns cell/synapse information
     cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240524.feather")
 
-    if whether_noise == "normal":
+    if whethernoise == "normal":
         matching_axon = cell_table.index[cell_table["status_axon"].isin(["extended", "clean"])].tolist()
         matching_dendrite = cell_table.index[cell_table["full_dendrite"] == True].tolist()
     else:
-        matching_axon = cell_table.index.tolist()
-        matching_dendrite = cell_table.index.tolist()
+        matching_axon = cell_table.index[cell_table["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"])].tolist()
+        matching_dendrite = cell_table.index[cell_table["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"])].tolist()
+
+    # check which neurons are inhibitory
+    classification_map = {
+        "excitatory_neuron": 1,
+        "nonneuron": 0,
+        "inhibitory_neuron": -1
+    }
+    classification_list = cell_table["classification_system"].map(classification_map).tolist()
 
     # choose structural confident neurons
     good_ct = cell_table[(cell_table["status_axon"].isin(["extended"])) & (cell_table["full_dendrite"] == True)]
@@ -85,25 +98,27 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     for index, pr_root_id in enumerate(cell_table["pt_root_id"]):
         if pr_root_id in prf_coreg_ids:
             cell_row = cell_table[cell_table["pt_root_id"] == pr_root_id]
+            # only select neurons that are excitatory 
+            if cell_row["classification_system"].item() in ["excitatory_neuron"]:
 
-            selected_neurons.append(index)
-            # count += 1
-            # Print the corresponding row in prf_coreg
-            matching_row = prf_coreg[prf_coreg["pt_root_id"] == pr_root_id]
+                selected_neurons.append(index)
+                # count += 1
+                # Print the corresponding row in prf_coreg
+                matching_row = prf_coreg[prf_coreg["pt_root_id"] == pr_root_id]
 
-            if len(matching_row) > 1:
-                matching_row = matching_row.iloc[0]
-            
-            unit_id, field = matching_row["unit_id"].item(), matching_row["field"].item()
-            # unit_id ordered sequentially
-            check_unitid = session_ds["unit_id"].values[unit_id-1]
-            check_field = session_ds["field"].values[unit_id-1]
-            # to confirm unitid-1 is the correct searching index
-            assert unit_id == check_unitid
-            assert field == check_field
+                if len(matching_row) > 1:
+                    matching_row = matching_row.iloc[0]
+                
+                unit_id, field = matching_row["unit_id"].item(), matching_row["field"].item()
+                # unit_id ordered sequentially
+                check_unitid = session_ds["unit_id"].values[unit_id-1]
+                check_field = session_ds["field"].values[unit_id-1]
+                # to confirm unitid-1 is the correct searching index
+                assert unit_id == check_unitid
+                assert field == check_field
 
-            activity_extraction.append(session_ds["fluorescence"].values[unit_id-1,:])
-            activity_extraction_extra.append(session_ds["activity"].values[unit_id-1,:])
+                activity_extraction.append(session_ds["fluorescence"].values[unit_id-1,:])
+                activity_extraction_extra.append(session_ds["activity"].values[unit_id-1,:])
 
     assert len(selected_neurons) == len(activity_extraction)
 
@@ -114,7 +129,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     if raw_data:
         activity_extraction_extra = activity_extraction
 
-    selectss_df = cell_table.loc[selected_neurons]
+    # selected neuron
+    selectss_df = cell_table.loc[selected_neurons].reset_index(drop=True)
+
+    assert all(selectss_df["classification_system"] == "excitatory_neuron"), "Not all values are 'excitatory_neuron'"
+
     soma_locations = selectss_df[['pt_position_x', 'pt_position_y', 'pt_position_z']].to_numpy()
     soma_distances = squareform(pdist(soma_locations, metric='euclidean'))
 
@@ -147,7 +166,17 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     metadata["gt_median_corr"] = gt_median_corr
 
-    W_all, totalSyn, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
+    _, _, synCount, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
+
+    # make inhibitory neurons (output connection) to have negative sign
+    inhindex = True
+    metadata["inhindex"] = inhindex 
+    if inhindex:
+        print("Make inhibitory neurons to have negative sign")
+        for i in range(len(classification_list)):
+            if classification_list[i] == -1:
+                synCount[i,:] = -synCount[i,:]
+
     W_goodneurons = synCount[np.ix_(good_ct_indices, good_ct_indices)]
     # this information should be consistently identical reguardless of scans/R_max
     W_goodneurons_row = np.corrcoef(W_goodneurons, rowvar=True)
@@ -270,17 +299,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             metadata[f"random_angle_std"] = np.std(angle_all, axis=0)
 
     fig.tight_layout()
-    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_heatmap.png")
-
-    def merge_arrays(arrays):
-        union_result = arrays[0]    
-        for arr in arrays[1:]:
-            union_result = np.union1d(union_result, arr)
-        return union_result
+    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_heatmap.png")
 
     # make sure neurons are aligned/matched correctly
     # delete all neurons if it is either nan or inf in any of the correlation matrices (row or column)
-    neurons_tobe_deleted = merge_arrays(indices_delete_lst)
+    neurons_tobe_deleted = activity_helper.merge_arrays(indices_delete_lst)
     print(f"Neurons union: {neurons_tobe_deleted}")
 
     activity_extraction_extra_trc = np.delete(activity_extraction_extra, neurons_tobe_deleted, axis=0)
@@ -307,22 +330,81 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(out_sample_corr_trc.shape)
     print(in_sample_corr_trc.shape)
 
-    scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_connectome_out.mat", {'connectome': out_sample_trc})
-    scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_connectome_in.mat", {'connectome': in_sample_trc})
+    pendindex = "_noise_noise" if whethernoise == "noise" else ""
+
+    scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_{pendindex}_connectome_out.mat", {'connectome': out_sample_trc})
+    scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_{pendindex}_connectome_in.mat", {'connectome': in_sample_trc})
     scipy.io.savemat(f"zz_data/microns_{session_info}_{scan_info}_activity.mat", {'activity': activity_extraction_extra_trc})
 
-    bettiindex = False
+    # plot the connectome
+    # first add further filtering to the neurons
+    illindex = False
+    if R_max == "1" and illindex: # only do it once
+        selectss_df_drop = selectss_df.drop(index=neurons_tobe_deleted)
+        selectss_df_drop = selectss_df_drop.reset_index(drop=True)
+        
+        cells_id = selectss_df_drop["pt_root_id"].to_numpy()
+        synapse_lst = []
+        for cell_id in cells_id:
+            [_, _, pre_loc, syn1_size, _] = helper.extract_neuron_synaptic_info(cell_id, "pre", cell_table, synapse_table, "new")
+            [_, _, post_loc, syn1_size, _] = helper.extract_neuron_synaptic_info(cell_id, "post", cell_table, synapse_table, "new")
+            synapse_loc = np.vstack((pre_loc, post_loc))
+            synapse_loc[:,[1,2]] = synapse_loc[:,[2,1]]
+            synapse_lst.append(synapse_loc)
+        mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
+
     # Betti analysis
-    if R_max == "1" and bettiindex: # only do it once
+    bettiindex = False
+    if R_max == "1" and bettiindex and whethernoise == "normal": # only do it once
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
         assert data_lst[0].shape == data_lst[1].shape == data_lst[2].shape
-        activity_helper.betti_analysis(data_lst, names, label=f"S{session_info}s{scan_info}")
+        activity_helper.betti_analysis(data_lst, names, metadata=metadata)
+
+    # if not running Betti analysis, then the connectome must be negative
+    if not bettiindex:
+        assert metadata["inhindex"] 
 
     soma_distances_trc = np.delete(soma_distances, neurons_tobe_deleted, axis=0)  
     soma_distances_trc = np.delete(soma_distances_trc, neurons_tobe_deleted, axis=1)
 
     print(soma_distances_trc.shape)
+
+    print("Off-Diagonal Comparison")
+    # diagonal compare
+    if len(diags[0]) != len(diags[1]):
+        diag1, diag2 = activity_helper.match_list_lengths(diags[0], diags[1])
+    else:
+        diag1, diag2 = diags[0], diags[1]
+    
+    t_stat, p_value = stats.ttest_rel(diag1, diag2)
+    p_value_one_sided = p_value / 2
+    p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
+
+    figallcompare, axsallcompare = plt.subplots(2,1,figsize=(4,4)) # purposefully not square for paper purpose
+    axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
+    axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
+    axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
+    axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
+    axsallcompare[0].legend()
+    axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
+
+    correlation_index_lst.append("random")
+
+    for correlation_index in correlation_index_lst:
+        axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
+                                label=f"{correlation_index}", color=c_vals[correlation_index_lst.index(correlation_index)])
+        if correlation_index == "random":
+            axsallcompare[1].fill_between([i+1 for i in range(len(metadata[f"random_angle"]))], metadata[f"random_angle"] - metadata[f"random_angle_std"], \
+                                    metadata[f"random_angle"] + metadata[f"random_angle_std"], color=c_vals_l[correlation_index_lst.index(correlation_index)])
+
+    axsallcompare[1].legend()
+    axsallcompare[1].set_ylabel("Angle")
+    axsallcompare[1].set_title("Subspace Angle")
+    axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
+
+    figallcompare.tight_layout()
+    figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_offdiagcompare_all.png")
 
     if for_construction:
 
@@ -339,10 +421,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 top_k_indices = np.argsort(W[i])[-K:]        
                 filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
             
-            row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
+            row_sums_a = np.sum(np.abs(filtered_matrix), axis=1) + 1e-10
 
             filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
-            assert np.sum(np.diag(filtered_matrix_normalized)) == 0
+            assert np.sum(np.diag(filtered_matrix_normalized)) < 1e-5
 
             # permute the matrix but still keep it symmetric
             if permute == "rowwise":
@@ -352,45 +434,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
             activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
             return activity_reconstruct_a, filtered_matrix_normalized
-
-        # diagonal compare
-        if len(diags[0]) != len(diags[1]):
-            diag1, diag2 = activity_helper.match_list_lengths(diags[0], diags[1])
-        else:
-            diag1, diag2 = diags[0], diags[1]
-        
-        t_stat, p_value = stats.ttest_rel(diag1, diag2)
-        p_value_one_sided = p_value / 2
-        p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
-
-        figallcompare, axsallcompare = plt.subplots(2,1,figsize=(4,4)) # purposefully not square for paper purpose
-        axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
-        axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
-        axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
-        axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
-        axsallcompare[0].legend()
-        axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
-
-        correlation_index_lst.append("random")
-
-        for correlation_index in correlation_index_lst:
-            axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
-                                    label=f"{correlation_index}", color=c_vals[correlation_index_lst.index(correlation_index)])
-            if correlation_index == "random":
-                axsallcompare[1].fill_between([i+1 for i in range(len(metadata[f"random_angle"]))], metadata[f"random_angle"] - metadata[f"random_angle_std"], \
-                                     metadata[f"random_angle"] + metadata[f"random_angle_std"], color=c_vals_l[correlation_index_lst.index(correlation_index)])
-        # print(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_offdiagcompare_all.png")
-
-        axsallcompare[1].legend()
-        # axsallcompare[1].set_xlabel("Angle Index")
-        axsallcompare[1].set_ylabel("Angle")
-        axsallcompare[1].set_title("Subspace Angle")
-        axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
-
-        figallcompare.tight_layout()
-        figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_offdiagcompare_all.png")
     
-        hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed.mat"
+
+        hyp_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_{pendindex}_embed.mat"
+        print(hyp_name)
         out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][1]
         out_corr = 1 - out_corr
         np.fill_diagonal(out_corr, 0)
@@ -403,7 +450,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         np.allclose(out_corr, W_corrs_all_trc[1], rtol=1e-05, atol=1e-08) 
         np.allclose(in_corr, W_corrs_all_trc[0], rtol=1e-05, atol=1e-08) 
 
-        hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_hypdist.mat"
+        hypembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_{pendindex}_embed_hypdist.mat"
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
 
         rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out, float(R_max))
@@ -425,7 +472,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # load Euclidean embedding coordinate
         # calcualate the pairwise Euclidean distance afterward    
 
-        eulembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_embed_eulmds.mat"
+        eulembed_name = f"./mds-results/Rmax_{R_max}_D_{embedding_dimension}_microns_{session_info}_{scan_info}_{pendindex}_embed_eulmds.mat"
         eulembed_connectome = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][1]
         eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome, metric='euclidean'))
         metadata["rmax_eul_out_distance"] = np.max(eulembed_connectome_distance_out)
@@ -475,7 +522,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axssanity[0,jj].set_title(f"{datas_names[jj]}")
             axssanity[1,jj].set_title(f"{datas_names[jj]}: {np.round(r_squared,4)}")
 
-        figsanity.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_sanity.png")
+        figsanity.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_sanity.png")
 
         # Top K neurons of consideration
         topK_values = ["all", int(W_corr.shape[0]/2)]
@@ -538,7 +585,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         sns.heatmap(input_matrics_rank_diff, ax=axcorr[1], cbar=True, square=True, center=0, cmap="coolwarm", annot=True, fmt=".1f", \
                     xticklabels=reconstruction_names[:-1], yticklabels=reconstruction_names[:-1])
         figcorr.tight_layout()
-        figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_corrcompare_D{embedding_dimension}_R{R_max}.png")
+        figcorr.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_corrcompare_D{embedding_dimension}_R{R_max}.png")
 
         # PSD
         def compute_psd(trace, fs):
@@ -702,10 +749,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 ax.set_xlabel("Correlation")
                 ax.set_ylabel("Frequency")
 
-        figact1.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare1_D{embedding_dimension}_R{R_max}.png")
-        figact2.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare2_D{embedding_dimension}_R{R_max}.png")
-        figact3.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare3_D{embedding_dimension}_R{R_max}.png")
-        figact4.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompare4_D{embedding_dimension}_R{R_max}.png")
+        figact1.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_actcompare1_D{embedding_dimension}_R{R_max}.png")
+        figact2.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_actcompare2_D{embedding_dimension}_R{R_max}.png")
+        figact3.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_actcompare3_D{embedding_dimension}_R{R_max}.png")
+        figact4.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_actcompare4_D{embedding_dimension}_R{R_max}.png")
 
 
         figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(10*len(allk_medians),10))
@@ -731,24 +778,24 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             ax.set_ylabel("Median Correlation")
 
 
-        figactshow.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
+        figactshow.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
 
         metadata["timeuplst"] = timeuplst
         metadata["allk_medians"] = allk_medians
         
-        with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whether_noise}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
+        with open(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()
 
-def all_run(R_max, embedding_dimension, raw_data, whether_noise):
+def all_run(R_max, embedding_dimension, raw_data, whethernoise):
     """
     """
-    # session_scan = [[6,6],[4,7],[5,3],[5,6],[5,7],[6,2],[6,4],[6,7],[7,3],[7,4],[7,5],[8,5],[9,3],[9,4]]
-    session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
-    for_construction = 1
+    # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
+    session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4]]
+    for_construction = True
     for ss in session_scan:
-        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, whether_noise=whether_noise)
+        run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, whethernoise=whethernoise)
         gc.collect()
 
     gc.collect()
@@ -1080,8 +1127,6 @@ def benchmark_with_rnn(trial_index):
     
     with open(f"./output_rnn/fromac_session_rnn_{trial_index}_metadata.pkl", "wb") as pickle_file:
         pickle.dump(metadata, pickle_file)
-
-
 
     
 

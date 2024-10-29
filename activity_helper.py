@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import time
 import random
 import gc
+import seaborn as sns
 
 import scipy 
 from sklearn.metrics import mean_squared_error
@@ -25,6 +26,12 @@ c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#
 c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#2d3748', '#97266d', '#975a16',]
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
+
+def merge_arrays(arrays):
+    union_result = arrays[0]    
+    for arr in arrays[1:]:
+        union_result = np.union1d(union_result, arr)
+    return union_result
 
 def float_to_scientific(value, n=4):
     return f"{value:.{n}e}"
@@ -229,11 +236,12 @@ def spline_set(y):
     return y_new
 
 
-def betti_analysis(data_lst, inputnames, label=""):
+def betti_analysis(data_lst, inputnames, metadata=None):
     """
     originally implemented in microns_activity_analysis.py
     data_lst: [activity_correlation, structure_correlation]
     """
+    label = f"S{metadata['session_info']}s{metadata['scan_info']}"
     print(label)
     assert len(data_lst) == 5
     doconnectome = (label == "S8s5")
@@ -242,9 +250,9 @@ def betti_analysis(data_lst, inputnames, label=""):
     NneuronWcol = data_lst[4].shape[0]
 
     if doconnectome:
-        figgood, axsgood = plt.subplots(1,2,figsize=(4*2,4))
+        figgood, axsgood = plt.subplots(2,2,figsize=(4*2,4*2))
 
-    fig, axs = plt.subplots(1,3,figsize=(4*3,4))
+    fig, axs = plt.subplots(1,3,figsize=(4*3,4*1))
 
     groundtruth_bettis = [] # for 3 correlation matrix (3 bettis)
     groundtruth_integratedbettis = []
@@ -267,27 +275,33 @@ def betti_analysis(data_lst, inputnames, label=""):
             if index <= 2:
                 axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
             elif doconnectome and index > 2: # only do this once for one scan
-                axsgood[index-3].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+                axsgood[index-3,0].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+                if i == 0: # do it once
+                    sns.heatmap(data, ax=axsgood[index-3,1], cmap='coolwarm', cbar=True, square=True, center=0)
             groundtruth_betti.append(curve)
 
         groundtruth_bettis.append(groundtruth_betti)
         groundtruth_integratedbettis.append(groundtruth_integratedbetti)
 
     repeat = 500
-    dimension = 2
-    noise = 0.2
+    dimension = 3
+    noise = 0.05
+    minRatio = 0.2
+    print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}")
     readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
     readin_files_lst = [readin_hypfile]
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWrow}_repeat={repeat}_dim_{dimension}noise_{noise}.mat", \
-                            f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"]
-        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise)
+        repeat = 100
+        readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWrow}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat", \
+                            f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
+        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
 
-        for ax in axsgood:
-            ax.legend() 
-        figgood.savefig(f"./zz_pyclique_results/gt_connectome.png")
+        for ax in axsgood.flatten():
+            ax.legend()
+        figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether{metadata['whethernoise']}_neg{metadata['inhindex']}.png")
+        print("done")
 
         sys.exit()
 
@@ -362,14 +376,13 @@ def betti_analysis(data_lst, inputnames, label=""):
                 axs[index].plot(edge_densities, synthetic_best[0][i], c=colorset[iii][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
                 axs[index].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
 
-        np.save(f'./zz_pyclique_results/{label}_bettis.npy', np.array(fakeallbettis))
+        np.save(f"./zz_pyclique_results/{label}_bettis_noise{noise}_whether{metadata['whethernoise']}.npy", np.array(fakeallbettis))
 
-
-    fig.savefig(f"./zz_pyclique_results/{label}.png")
+    fig.savefig(f"./zz_pyclique_results/{label}_noise{noise}_whether{metadata['whethernoise']}.png")
     time.sleep(1000)
 
 
-def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, groundtruth_integratedbettis, repeat, dd, noise):
+def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, groundtruth_integratedbettis, repeat, dd, noise, minRatio):
     """
     redundant to [betti_analysis] function
     separate for better readability
@@ -445,10 +458,10 @@ def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, gr
         fakeallbettis.append([realbetti, fakebetti])
         for i in range(3):
             edge_densities = synthetic_best[2]
-            ax[iii].plot(edge_densities, synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
-            ax[iii].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
+            ax[iii,0].plot(edge_densities, synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
+            ax[iii,0].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
 
-        np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}.npy', np.array(fakeallbettis))
+        np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}_minRatio{minRatio}.npy', np.array(fakeallbettis))
 
         del allerrs, allsynthetic, fake_integrated_bettis 
         gc.collect()
