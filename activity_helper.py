@@ -28,12 +28,16 @@ colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
 def merge_arrays(arrays):
+    """
+    """
     union_result = arrays[0]    
     for arr in arrays[1:]:
         union_result = np.union1d(union_result, arr)
     return union_result
 
 def float_to_scientific(value, n=4):
+    """
+    """
     return f"{value:.{n}e}"
 
 def pearson_correlation_with_nans(arr1, arr2):
@@ -287,7 +291,7 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     dimension = 3
     noise = 0.05
     minRatio = 0.2
-    print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}")
+    print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}; connectome type: {metadata['whetherconnectome']}")
     readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
     readin_files_lst = [readin_hypfile]
     names = ["Eul", "Hyp"]
@@ -295,12 +299,13 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     if doconnectome:
         repeat = 100
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWrow}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat", \
-                            f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
-        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
+                             f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"
+                            ]
+        # calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
 
         for ax in axsgood.flatten():
             ax.legend()
-        figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether{metadata['whethernoise']}_neg{metadata['inhindex']}.png")
+        figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}.png")
         print("done")
 
         sys.exit()

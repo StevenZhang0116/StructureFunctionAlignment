@@ -13,12 +13,12 @@ plt.style.use(['no-latex'])
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 
-def microns_across_scans(R_max, dimension, Kselect, whether_noise):
+def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnectome):
 
     def find_pkl_files(directory):
         # only select pkl files with desired dimension and R_max
         strname1 = f"D{dimension}_R{R_max}.pkl"
-        strname2 = f"noise_{whether_noise}"
+        strname2 = f"noise_{whethernoise}_cc_{whetherconnectome}"
         all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
         matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
 
@@ -163,7 +163,7 @@ def microns_across_scans(R_max, dimension, Kselect, whether_noise):
             body.set_alpha(0.7)                     # Set transparency (optional)
 
     fig.tight_layout()
-    fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whether_noise}.png")
+    fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
     if showpermute:
         names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
@@ -175,7 +175,7 @@ def microns_across_scans(R_max, dimension, Kselect, whether_noise):
 
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
-    axexp.set_ylim([-0.3, 0.8])
+    axexp.set_ylim([0,1])
 
     if not showactivity:
         axexp.axhline(1, c='red', linestyle='--')
@@ -186,7 +186,7 @@ def microns_across_scans(R_max, dimension, Kselect, whether_noise):
         axexp.set_ylabel("Explanation Ratio")
 
     figexp.tight_layout()
-    figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whether_noise}.png")
+    figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
     rmax_quantiles = np.array(rmax_quantiles)
     axrmax.plot(rmax_quantiles[:,0], "-o", label="Out")
@@ -194,9 +194,9 @@ def microns_across_scans(R_max, dimension, Kselect, whether_noise):
     axrmax.legend()
     axrmax.set_xlabel("Trial")
     axrmax.set_ylabel("Rmax Quantile")
-    figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whether_noise}.png")
+    figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
-    np.savez(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whether_noise}.npz", alldata=alldata)
+    np.savez(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.npz", alldata=alldata)
 
 
 def microns_across_scans_rnn(Kselect):

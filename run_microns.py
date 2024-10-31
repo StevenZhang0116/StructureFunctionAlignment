@@ -10,10 +10,11 @@ if __name__ == "__main__":
     D = 2
 
     for R_max in R_max_lst:
-        ww = "noise"
-        all_run(R_max, D, False, ww)
-        microns_across_scans(R_max, D, 0, ww)
-        microns_across_scans(R_max, D, 1, ww)
+        ww = "normal"
+        cc = "binary"
+        all_run(R_max, D, False, ww, cc)
+        microns_across_scans(R_max, D, 0, ww, cc)
+        microns_across_scans(R_max, D, 1, ww, cc)
     
     # microns_parameter_search(D, 0)
     # microns_parameter_search(D, 1)
