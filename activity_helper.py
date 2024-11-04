@@ -27,6 +27,65 @@ c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
+def reconstruction(W, activity_extraction_extra_trc, K="all", permute=False):
+    """
+    add option to only take top K components in reconstruction
+    if K=None, then using all neurons (without any low-pass filter)
+    """
+    if K == "all":
+        K = W.shape[0]
+
+    filtered_matrix = np.zeros_like(W)
+    for i in range(W.shape[0]):
+        top_k_indices = np.argsort(W[i])[-K:]        
+        filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
+    
+    row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
+
+    filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
+    # # Oct 30th: 
+    # assert np.sum(np.diag(filtered_matrix_normalized)) < 1e-5
+
+    # permute the matrix but still keep it symmetric
+    if permute == "rowwise":
+        filtered_matrix_normalized = permute_symmetric_matrix(filtered_matrix_normalized)
+    elif permute == "cellwise":
+        filtered_matrix_normalized = permute_symmetric_matrix_cellwise(filtered_matrix_normalized)
+
+    activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
+    return activity_reconstruct_a, filtered_matrix_normalized
+
+def vectorized_pearsonr(x, y):
+    """
+    compute Pearson correlation coefficient vectorized over the first axis.
+    multi-batches version of pearsonr for time efficiency
+    """
+    x_mean = x.mean(axis=1, keepdims=True)
+    y_mean = y.mean(axis=1, keepdims=True)
+    n = x.shape[1]
+    cov = np.sum((x - x_mean) * (y - y_mean), axis=1)
+    x_std = np.sqrt(np.sum((x - x_mean)**2, axis=1))
+    y_std = np.sqrt(np.sum((y - y_mean)**2, axis=1))
+    return cov / (x_std * y_std)
+
+def find_intervals(arr):
+    """
+    Detects all intervals of consecutive 1s and 0s in a NumPy array.
+    """
+    intervals = {'1': [], '0': []}
+    start = 0 
+
+    for i in range(1, len(arr)):
+        if arr[i] != arr[i - 1]:  
+            end = i - 1
+            intervals[str(arr[start])].append((start, end))  
+            start = i  # Start a new interval
+
+    intervals[str(arr[start])].append((start, len(arr) - 1))
+
+    return intervals
+
+
 def merge_arrays(arrays):
     """
     """
@@ -290,21 +349,22 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     repeat = 500
     dimension = 3
     noise = 0.05
-    minRatio = 0.2
+    minRatio = 0.1
     print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}; connectome type: {metadata['whetherconnectome']}")
     readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
     readin_files_lst = [readin_hypfile]
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        repeat = 100
-        readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWrow}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat", \
-                             f"./zz_pyclique/hyperbolic_dis_n={NneuronWcol}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"
-                            ]
-        # calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
+        repeat = 5
+        NneuronWselect = max(NneuronWrow, NneuronWcol)
+        readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
+
+        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
 
         for ax in axsgood.flatten():
             ax.legend()
+        figgood.tight_layout()
         figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}.png")
         print("done")
 
@@ -313,7 +373,6 @@ def betti_analysis(data_lst, inputnames, metadata=None):
 
     for iii in range(len(readin_files_lst)):
         readin_files = readin_files_lst[iii]
-        select = ""
 
         data = scipy.io.loadmat(readin_files)
         data = data['distance_matrices'] if iii == 0 else data
@@ -395,78 +454,79 @@ def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, gr
     assert len(groundtruth_bettis) == len(groundtruth_integratedbettis) == 2
     names = ["row", "col"]
 
-    for iii in range(len(readin_W_hypfiles)):
-        readin_files = readin_W_hypfiles[iii]
-        select = ""
+    readin_files = readin_W_hypfiles[0]
+    data = scipy.io.loadmat(readin_files)
+    data = data['distance_matrices']
 
-        data = scipy.io.loadmat(readin_files)
-        data = data['distance_matrices']
+    if isinstance(data, dict):
+        data_keys = data.keys()
+        fields = sorted([key for key in data_keys if not key.startswith('__')])
+    else:
+        fields = sorted(data.dtype.names)
 
+    fields = sorted(fields, key=lambda x: int(x.split('_')[1]))
+    print(f"fields: {fields}")
+
+    allerrs = []
+    allsynthetic = []
+    fake_integrated_bettis = []
+
+    for fieldNameIter in range(len(fields)):
+        thisbetti = [[],[],[]]
+        fieldName = fields[fieldNameIter]
+        print(f"fieldName: {fieldName}")
         if isinstance(data, dict):
-            data_keys = data.keys()
-            fields = sorted([key for key in data_keys if not key.startswith('__')])
+            currentMatrix = data[fieldName]
         else:
-            fields = sorted(data.dtype.names)
+            currentMatrix = data[fieldName][0, 0]
 
-        fields = sorted(fields, key=lambda x: int(x.split('_')[1]))
-        print(f"fields: {fields}")
+        for i in range(repeat):
+            # print(f'Number: {i+1}')
+            squeeze_mat = np.squeeze(currentMatrix[i, :, :])
+            [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(squeeze_mat)
+            for i in range(3):
+                thisbetti[i].append(betti_curves[:,i+1])
 
-        allerrs = []
-        allsynthetic = []
-        fake_integrated_bettis = []
+            del squeeze_mat
+            gc.collect()
 
-        for fieldNameIter in range(len(fields)):
-            thisbetti = [[],[],[]]
-            fieldName = fields[fieldNameIter]
-            print(f"fieldName: {fieldName}")
-            if isinstance(data, dict):
-                currentMatrix = data[fieldName]
-            else:
-                currentMatrix = data[fieldName][0, 0]
+        thisbetti = [np.array(subbetti) for subbetti in thisbetti]
+        meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
+        fake_integrated_betti = []
+        for jjj in range(3):
+            consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
+            integrated_betti = np.sum([a * b for a, b in zip(meanbetti[jjj], consecutive_differences)])
+            fake_integrated_betti.append(integrated_betti)
+        stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
 
-            for i in range(repeat):
-                # print(f'Number: {i+1}')
-                squeeze_mat = np.squeeze(currentMatrix[i, :, :])
-                [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(squeeze_mat)
-                for i in range(3):
-                    thisbetti[i].append(betti_curves[:,i+1])
-
-                del squeeze_mat
-                gc.collect()
-
-            thisbetti = [np.array(subbetti) for subbetti in thisbetti]
-            meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
-            fake_integrated_betti = []
-            for jjj in range(3):
-                consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
-                integrated_betti = np.sum([a * b for a, b in zip(meanbetti[jjj], consecutive_differences)])
-                fake_integrated_betti.append(integrated_betti)
-            stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
-
-            fake_integrated_bettis.append(fake_integrated_betti)
-            
-            oneerr = []
+        fake_integrated_bettis.append(fake_integrated_betti)
+        
+        oneerr = []
+        for iii in range(2):
             errbetti = [mean_squared_error(spline_set(meanbetti[i]), spline_set(groundtruth_bettis[iii][i])) for i in range(3)]
             oneerr.append(np.sum(errbetti))
             allerrs.append(oneerr)
 
-            allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
+        allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
 
-            del thisbetti, meanbetti, stdbetti 
-            gc.collect()
+        del thisbetti, meanbetti, stdbetti 
+        gc.collect()
 
-        allerrs = np.array(allerrs)
+    
+    for iii in range(2):
+        allerr = np.array(allerrs[iii])
         fakeallbettis = []
-        minerr_index = np.argmin(allerrs)
+        minerr_index = np.argmin(allerr)
         synthetic_best = allsynthetic[minerr_index]
         realbetti, fakebetti = groundtruth_integratedbettis[iii], fake_integrated_bettis[iii]
         fakeallbettis.append([realbetti, fakebetti])
+        ax[iii,0].set_title(fields[minerr_index])
         for i in range(3):
             edge_densities = synthetic_best[2]
             ax[iii,0].plot(edge_densities, synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
             ax[iii,0].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
 
-        np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}_minRatio{minRatio}.npy', np.array(fakeallbettis))
+        # np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}_minRatio{minRatio}.npy', np.array(fakeallbettis))
 
-        del allerrs, allsynthetic, fake_integrated_bettis 
-        gc.collect()
+    del allerrs, allsynthetic, fake_integrated_bettis 
+    gc.collect()

@@ -12,6 +12,7 @@ plt.style.use('science')
 plt.style.use(['no-latex'])
 
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
+c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
 def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnectome):
 
@@ -60,6 +61,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         column_primary_angle = np.mean(data["column_angle"][0:cc])
         row_primary_angle = np.mean(data["row_angle"][0:cc])
         allk_medians = data["allk_medians"][Kselect][ttind]
+        allk_medians_session = data["allk_medians_session"]
 
         activity_explain = allk_medians[0]
 
@@ -79,6 +81,14 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
             in_eul_ratio = allk_medians[3]
             out_hyp_ratio = allk_medians[5]
             out_eul_ratio = allk_medians[6]
+
+            session_act = allk_medians_session[0]
+            session_in = allk_medians_session[1]
+            session_inhyp = allk_medians_session[2]
+            session_ineul = allk_medians_session[3]
+            session_out = allk_medians_session[4]
+            session_outhyp = allk_medians_session[5]
+            session_outeul = allk_medians_session[6]
         
         
         in_hyp_ratio_pm = allk_medians[8]/allk_medians[1]
@@ -88,9 +98,9 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         out_hyp_ratio_pm = allk_medians[10]/allk_medians[4]
         out_eul_ratio_pm = allk_medians[11]/allk_medians[4]
 
-        coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio])
-        rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio])
-
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio, session_act, session_in, session_inhyp, session_ineul])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio, session_act, session_out, session_outhyp, session_outeul])
+        
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
     allmarks = ["In-Correlation", "Out-Correlation"]
@@ -99,7 +109,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
     if showminimal:
         figexp, axexp = plt.subplots(1,1,figsize=(2,4))
     else:
-        figexp, axexp = plt.subplots(1,1,figsize=(4,4))
+        figexp, axexp = plt.subplots(1,2,figsize=(4*2,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
     
     if showpermute:
@@ -138,6 +148,11 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,8].flatten()
         hypratiopm, eulratiopm = alldata[i][:,6].flatten(), alldata[i][:,7].flatten()
 
+        activity_session_base = alldata[i][:,9].flatten()
+        activity_session_in = alldata[i][:,10].flatten()
+        activity_session_inhyp = alldata[i][:,11].flatten()
+        activity_session_ineul = alldata[i][:,12].flatten()
+
         if showpermute:
             data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
         else:
@@ -148,19 +163,28 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
                     data = [hypratio/activity_base, toactratio/activity_base]
                 else:
                     data = [hypratio/activity_base, eulratio/activity_base, toactratio/activity_base]
+                    data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
         
-        violin_parts = axexp.violinplot(data, positions=positions, showmeans=False, showmedians=True)
+        violin_parts = axexp[0].violinplot(data, positions=positions, showmeans=False, showmedians=True)
+        violin_parts_session = axexp[1].violinplot(data_session, positions=positions, showmeans=False, showmedians=True)
 
         for posindex in range(len(positions)):
             for datapt in data[posindex]:
-                axexp.scatter(positions[posindex], datapt, color=c_vals[positions[posindex]]) 
+                axexp[0].scatter(positions[posindex], datapt, color=c_vals[positions[posindex]]) 
+            for datapt in data_session[posindex]:
+                axexp[1].scatter(positions[posindex], datapt, color=c_vals[positions[posindex]])
 
-        for j, body in enumerate(violin_parts['bodies']):
-            body.set_facecolor(c_vals[indices[i][j]])  # Set color for each violin
-            body.set_edgecolor('black')             # Optionally set edge color
-            body.set_alpha(0.7)                     # Set transparency (optional)
+        for j, (body1, body2) in enumerate(zip(violin_parts['bodies'], violin_parts_session['bodies'])):
+            color = c_vals[indices[i][j]]  # Determine color for the current index
+            body1.set_facecolor(color)      # Set color for violin in violin_parts
+            body2.set_facecolor(color)      # Set same color for violin in violin_parts_session
+            body1.set_edgecolor('black')    # Optionally set edge color
+            body2.set_edgecolor('black')
+            body1.set_alpha(0.7)
+            body2.set_alpha(0.7)
+
 
     fig.tight_layout()
     fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
@@ -173,17 +197,18 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         else:
             names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
 
-    axexp.set_xticks(range(len(names))) 
-    axexp.set_xticklabels(names, rotation=45, ha='right')
-    axexp.set_ylim([0,1])
+    for ax in axexp:
+        ax.set_xticks(range(len(names))) 
+        ax.set_xticklabels(names, rotation=45, ha='right')
+        ax.set_ylim([0,1])
 
-    if not showactivity:
-        axexp.axhline(1, c='red', linestyle='--')
+        if not showactivity:
+            ax.axhline(1, c='red', linestyle='--')
 
-    if showactivity:
-        axexp.set_ylabel("Explanation Ratio to Activity", labelpad=-5)
-    else:
-        axexp.set_ylabel("Explanation Ratio")
+        if showactivity:
+            ax.set_ylabel("Explanation Ratio to Activity")
+        else:
+            ax.set_ylabel("Explanation Ratio")
 
     figexp.tight_layout()
     figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
