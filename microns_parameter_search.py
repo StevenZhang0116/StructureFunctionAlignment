@@ -43,7 +43,7 @@ def microns_parameter_search(dimension, Kselect, whethernoise, whetherconnectome
     inbase_data, outbase_data = [], []
     inbase_data_session, outbase_data_session = [], []
 
-    figcomparer, axscomparer = plt.subplots(1,1,figsize=(4,4))  
+    figcomparer, axscomparer = plt.subplots(1,2,figsize=(4*2,4))  
 
     for i in range(len(npz_files)):
         file_path = npz_files[i]
@@ -68,26 +68,26 @@ def microns_parameter_search(dimension, Kselect, whethernoise, whetherconnectome
     meaninss, stdinss = np.array([np.median(dd) for dd in hypin_data_session]), np.array([np.std(dd) for dd in hypin_data_session])
     meanoutss, stdoutss = np.array([np.median(dd) for dd in hypout_data_session]), np.array([np.std(dd) for dd in hypout_data_session])
 
-    axscomparer.plot(log_r_values, meanin, "-o", color=c_vals[0], label="Hyp2In")
-    axscomparer.fill_between(log_r_values, meanin-stdin, meanin+stdin, color=c_vals_l[0], alpha=0.2)
-    axscomparer.plot(log_r_values, meanout, "-o", color=c_vals[3], label="Hyp2Out")
-    axscomparer.fill_between(log_r_values, meanout-stdout, meanout+stdout, color=c_vals_l[3], alpha=0.2)
+    axscomparer[0].plot(log_r_values, meanin, "-o", color=c_vals[0], label="Hyp2In")
+    axscomparer[0].fill_between(log_r_values, meanin-stdin, meanin+stdin, color=c_vals_l[0], alpha=0.2)
+    axscomparer[0].plot(log_r_values, meanout, "-o", color=c_vals[3], label="Hyp2Out")
+    axscomparer[0].fill_between(log_r_values, meanout-stdout, meanout+stdout, color=c_vals_l[3], alpha=0.2)
+    axscomparer[0].axhline(y=np.median(inbase_data), color=c_vals[0])
+    axscomparer[0].axhline(y=np.median(outbase_data), color=c_vals[3])
 
-    axscomparer.axhline(y=np.median(inbase_data), color=c_vals[0])
-    axscomparer.axhline(y=np.median(outbase_data), color=c_vals[3])
-
-    axscomparer.plot(log_r_values, meaninss, "--o", color=c_vals[0], label="Hyp2InSession")
-    axscomparer.fill_between(log_r_values, meaninss-stdinss, meaninss+stdinss, color=c_vals_l[0], alpha=0.2)
-    axscomparer.plot(log_r_values, meanoutss, "--o", color=c_vals[3], label="Hyp2OutSession")
-    axscomparer.fill_between(log_r_values, meanoutss-stdoutss, meanoutss+stdoutss, color=c_vals_l[3], alpha=0.2)
-    axscomparer.axhline(y=np.median(inbase_data_session), linestyle="--", color=c_vals[0])
-    axscomparer.axhline(y=np.median(outbase_data_session), linestyle="--", color=c_vals[3])
+    axscomparer[1].plot(log_r_values, meaninss, "--o", color=c_vals[0], label="Hyp2InSession")
+    axscomparer[1].fill_between(log_r_values, meaninss-stdinss, meaninss+stdinss, color=c_vals_l[0], alpha=0.2)
+    axscomparer[1].plot(log_r_values, meanoutss, "--o", color=c_vals[3], label="Hyp2OutSession")
+    axscomparer[1].fill_between(log_r_values, meanoutss-stdoutss, meanoutss+stdoutss, color=c_vals_l[3], alpha=0.2)
+    axscomparer[1].axhline(y=np.median(inbase_data_session), linestyle="--", color=c_vals[0])
+    axscomparer[1].axhline(y=np.median(outbase_data_session), linestyle="--", color=c_vals[3])
     
-    axscomparer.set_xticks(r_values_power_of_10)
-    axscomparer.set_xticklabels(tick_labels)
-    axscomparer.set_xlabel("R_max")
-    axscomparer.set_ylabel("Explanation Ratio")
-    axscomparer.legend()
+    for ax in axscomparer:
+        ax.set_xticks(r_values_power_of_10)
+        ax.set_xticklabels(tick_labels)
+        ax.set_xlabel("R_max")
+        ax.set_ylabel("Explanation Ratio to Activity")
+        ax.legend()
         
     figcomparer.tight_layout()
     figcomparer.savefig(f"./zz_Rmax_D{dimension}_scan_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")

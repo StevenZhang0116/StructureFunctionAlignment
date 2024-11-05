@@ -137,7 +137,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         
         axs[i].scatter(xx, toactratio)
         axs[i].plot(xx_line, yy_line, color='red', linestyle="--")
-        axs[i].set_title(f"slope: {np.round(slope,3)}; r^2: {np.round(r_value**2,3)}")
+        axs[i].set_title(f"r^2: {np.round(r_value**2,3)}; p: {np.round(p_value,3)}")
 
         if kk == 1:
             axs[i].set_xlabel(f"{allmarks[i]} Primary Angle")
@@ -281,13 +281,13 @@ def microns_across_scans_rnn(Kselect):
 
     fig, axs = plt.subplots(1,2,figsize=(4*2,4))
     if showminimal:
-        figexp, axexp = plt.subplots(1,1,figsize=(2,4))
+        figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     else:
         figexp, axexp = plt.subplots(1,1,figsize=(4,4))
     figrmax, axrmax = plt.subplots(1,1,figsize=(4,4))
 
     if showminimal:
-        indices = [[0,1],[2,3]]
+        indices = [[0,1,2],[3,4,5]]
     else:
         indices = [[0,1,2,6],[3,4,5,6]]
 
@@ -299,7 +299,7 @@ def microns_across_scans_rnn(Kselect):
         actratio = alldata[i][:,6].flatten()
 
         if showminimal:
-            data = [list(hypratio/actratio), list(toactratio/actratio)]
+            data = [list(hypratio/actratio), list(eulratio/actratio), list(toactratio/actratio)]
         else:
             data = [list(hypratio), list(eulratio), list(toactratio), list(actratio)]
 
@@ -320,12 +320,12 @@ def microns_across_scans_rnn(Kselect):
     fig.savefig(f"./output_rnn/zz_overall_rnn_K{Kselect}.png")
 
     if showminimal:
-        names = ["HypInAct", "InAct", "HypOutAct", "OutAct"]
+        names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2Out", "Eul2Out", "Out2Act"]
     else:
         ames = ["HypIn", "EulIn", "InAct", "HypOut", "EulOut", "OutAct", "Activity"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
-    axexp.set_ylim([-0.3, 0.8])
+    axexp.set_ylim([-0.2,0.8])
 
     if not showminimal:
         axexp.set_ylabel("Correlation")

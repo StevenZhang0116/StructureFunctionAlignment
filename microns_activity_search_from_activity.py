@@ -438,7 +438,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = False
+    bettiindex = True
     if bettiindex and whethernoise in ["normal", "noise"]: # only do it once
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
@@ -1155,4 +1155,4 @@ if __name__ == "__main__":
     #         continue
 
     microns_across_scans.microns_across_scans_rnn(0)
-    microns_across_scans.microns_across_scans_rnn(1)
+    # microns_across_scans.microns_across_scans_rnn(1)
