@@ -252,7 +252,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             if classification_list[i] == -1:
                 used_structure[i,:] = -1 * used_structure[i,:]
     
-    if whethernoise == "noise":
+    if whethernoise in ["noise", "glia"]: # 
         W_goodneurons_row_info = used_structure[good_ct_indices,:]
         W_goodneurons_col_info = used_structure[:,good_ct_indices]
     elif whethernoise == "normal":

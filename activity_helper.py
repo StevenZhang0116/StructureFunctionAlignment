@@ -347,8 +347,8 @@ def betti_analysis(data_lst, inputnames, metadata=None):
         groundtruth_integratedbettis.append(groundtruth_integratedbetti)
 
     repeat = 500
-    dimension = 3
-    noise = 0.05
+    dimension = 2
+    noise = 0.0625
     minRatio = 0.1
     print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}; connectome type: {metadata['whetherconnectome']}")
     readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
@@ -356,7 +356,7 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        repeat = 5
+        repeat = 10
         NneuronWselect = max(NneuronWrow, NneuronWcol)
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
 
