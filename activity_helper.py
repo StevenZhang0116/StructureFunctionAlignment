@@ -317,34 +317,57 @@ def betti_analysis(data_lst, inputnames, metadata=None):
 
     fig, axs = plt.subplots(1,3,figsize=(4*3,4*1))
 
-    groundtruth_bettis = [] # for 3 correlation matrix (3 bettis)
-    groundtruth_integratedbettis = []
+    try:
+        data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz")
+        densities = data['densities']
+        groundtruth_bettis = data['groundtruth_bettis_save']
+        groundtruth_integratedbettis = data['groundtruth_integratedbetti_save']
+        save_matrix = data['save_matrix']
+        for ind in range(2):
+            for i in range(3):
+                axs[ind,0].plot(densities[ind][i], groundtruth_bettis[ind][i], c=c_vals[i], label=f"Betti {i+1}")
+            sns.heatmap(save_matrix[ind], ax=axs[ind,1], cmap='coolwarm', cbar=True, square=True, center=0)
 
-    for index in range(len(data_lst)):
-        data = data_lst[index]
-        print(f"Data Shape: {data.shape}")
-        groundtruth_betti, groundtruth_integratedbetti = [], [] # for 1 correlation matrix (3 bettis)
+    except:
+        densities, groundtruth_bettis, groundtruth_integratedbettis = [], [], [] # for 3 correlation matrix (3 bettis)
+        save_matrix = []
+
+        for index in range(len(data_lst)):
+            data = data_lst[index]
+            print(f"Data Shape: {data.shape}")
+            density, groundtruth_betti, groundtruth_integratedbetti = [], [], [] # for 1 correlation matrix (3 bettis)
+            
+            [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(data)
+            # dd = int(len(edge_densities)/100)
+            dd = 1
         
-        [betti_curves,edge_densities] = compute_betti_curves.compute_betti_curves(data)
-        # dd = int(len(edge_densities)/100)
-        dd = 1
-    
-        for i in range(3):
-            curve = betti_curves[:,i+1]
-            curve = moving_average(curve,dd)
-            consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
-            integrated_betti = np.sum([a * b for a, b in zip(curve, consecutive_differences)])
-            groundtruth_integratedbetti.append(integrated_betti)
-            if index <= 2:
-                axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
-            elif doconnectome and index > 2: # only do this once for one scan
-                axsgood[index-3,0].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
-                if i == 0: # do it once
-                    sns.heatmap(data, ax=axsgood[index-3,1], cmap='coolwarm', cbar=True, square=True, center=0)
-            groundtruth_betti.append(curve)
+            for i in range(3):
+                curve = betti_curves[:,i+1]
+                curve = moving_average(curve,dd)
+                consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
+                integrated_betti = np.sum([a * b for a, b in zip(curve, consecutive_differences)])
+                groundtruth_integratedbetti.append(integrated_betti)
+                if index <= 2:
+                    axs[index].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+                elif doconnectome and index > 2: # only do this once for one scan
+                    axsgood[index-3,0].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
+                    if i == 0: # do it once
+                        sns.heatmap(data, ax=axsgood[index-3,1], cmap='coolwarm', cbar=True, square=True, center=0)
+                        save_matrix.append(data)
+                    
+                groundtruth_betti.append(curve)
+                density.append(moving_average(edge_densities,dd))
 
-        groundtruth_bettis.append(groundtruth_betti)
-        groundtruth_integratedbettis.append(groundtruth_integratedbetti)
+            groundtruth_bettis.append(groundtruth_betti)
+            groundtruth_integratedbettis.append(groundtruth_integratedbetti)
+            densities.append(density)
+
+        groundtruth_bettis_save = np.array(groundtruth_bettis)
+        groundtruth_integratedbetti_save = np.array(groundtruth_integratedbettis)
+        densities = np.array(densities)
+        np.savez(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", \
+                    densities=densities, groundtruth_bettis_save=groundtruth_bettis_save, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, save_matrix=save_matrix)
+
 
     repeat = 500
     dimension = 2
