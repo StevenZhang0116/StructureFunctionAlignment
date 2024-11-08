@@ -26,6 +26,7 @@ for ss in session_scan:
     intervals = activity_helper.find_intervals(stim_on_time)
     intervals = intervals["1"]
     intervals_duration = [(interval[1] - interval[0]) / stimulus_ds.nframes for interval in intervals]
+    print(np.sum(intervals_duration))
     all_intervals_duration.extend(intervals_duration)
 
 fig, ax = plt.subplots(1,1,figsize=(4,4))

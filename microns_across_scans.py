@@ -200,7 +200,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
     for ax in axexp:
         ax.set_xticks(range(len(names))) 
         ax.set_xticklabels(names, rotation=45, ha='right')
-        ax.set_ylim([0,1])
+        ax.set_ylim([-0.2,0.8])
 
         if not showactivity:
             ax.axhline(1, c='red', linestyle='--')

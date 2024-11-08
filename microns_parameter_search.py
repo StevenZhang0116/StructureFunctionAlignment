@@ -88,6 +88,7 @@ def microns_parameter_search(dimension, Kselect, whethernoise, whetherconnectome
         ax.set_xlabel("R_max")
         ax.set_ylabel("Explanation Ratio to Activity")
         ax.legend()
+        ax.set_ylim([-0.2,0.8])
         
     figcomparer.tight_layout()
     figcomparer.savefig(f"./zz_Rmax_D{dimension}_scan_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")

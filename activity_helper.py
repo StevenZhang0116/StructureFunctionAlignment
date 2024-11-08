@@ -318,6 +318,7 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     fig, axs = plt.subplots(1,3,figsize=(4*3,4*1))
 
     try:
+        # if already calculated in the previous run
         data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz")
         densities = data['densities']
         groundtruth_bettis = data['groundtruth_bettis_save']
@@ -379,7 +380,7 @@ def betti_analysis(data_lst, inputnames, metadata=None):
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        repeat = 10
+        repeat = 1
         NneuronWselect = max(NneuronWrow, NneuronWcol)
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
 
