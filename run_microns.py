@@ -13,7 +13,7 @@ if __name__ == "__main__":
     cc = "binary"
 
     for R_max in R_max_lst:
-        # all_run(R_max, D, False, ww, cc)
+        all_run(R_max, D, False, ww, cc)
         microns_across_scans(R_max, D, 0, ww, cc)
         # microns_across_scans(R_max, D, 1, ww, cc)
     

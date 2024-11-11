@@ -299,41 +299,54 @@ def spline_set(y):
     return y_new
 
 
-def betti_analysis(data_lst, inputnames, metadata=None):
+def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     """
     originally implemented in microns_activity_analysis.py
     data_lst: [activity_correlation, structure_correlation]
     """
     label = f"S{metadata['session_info']}s{metadata['scan_info']}"
     print(label)
-    assert len(data_lst) == 5
-    doconnectome = (label == "S8s5")
     Nneuron = data_lst[0].shape[0]
     NneuronWrow = data_lst[3].shape[0]
     NneuronWcol = data_lst[4].shape[0]
 
     if doconnectome:
-        figgood, axsgood = plt.subplots(2,2,figsize=(4*2,4*2))
+        figgood, axsgood = plt.subplots(2,3,figsize=(4*3,4*2))
 
-    fig, axs = plt.subplots(1,3,figsize=(4*3,4*1))
+    datanum = len(data_lst) if doconnectome else 1
+
+    fig, axs = plt.subplots(1,datanum,figsize=(4*datanum,4*1))
+    axs = np.atleast_1d(axs)
+
+    dd = 1
 
     try:
-        # if already calculated in the previous run
-        data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz")
-        densities = data['densities']
-        groundtruth_bettis = data['groundtruth_bettis_save']
-        groundtruth_integratedbettis = data['groundtruth_integratedbetti_save']
-        save_matrix = data['save_matrix']
-        for ind in range(2):
-            for i in range(3):
-                axs[ind,0].plot(densities[ind][i], groundtruth_bettis[ind][i], c=c_vals[i], label=f"Betti {i+1}")
-            sns.heatmap(save_matrix[ind], ax=axs[ind,1], cmap='coolwarm', cbar=True, square=True, center=0)
+        if doconnectome:
+            # if already calculated in the previous run
+            data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", allow_pickle=True)
+            densities = data['densities']    
+            groundtruth_bettis = data['groundtruth_bettis_save']
+            groundtruth_integratedbettis = data['groundtruth_integratedbetti_save']
+            save_matrix = data['save_matrix']
+            for ind in range(2):
+                for i in range(3):
+                    axsgood[ind,0].plot(densities[3+ind,i], groundtruth_bettis[3+ind,i], c=c_vals[i], label=f"Betti {i+1}")
+                    axsgood[ind,1].plot(densities[3+ind,i], groundtruth_bettis[3+ind,i], c=c_vals[i], label=f"Betti {i+1}")
+                    axsgood[ind,1].set_xlim([-0.01,0.21])
+                sns.heatmap(save_matrix[ind], ax=axsgood[ind,2], cmap='coolwarm', cbar=True, square=True, center=0)
+            print("period saving")
+            figgood.savefig(f"./zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}_backup.png")
 
-    except:
+        else:
+            raise Exception("Activity Calculation Only!")
+
+    except Exception as e:
+        print(e)
+
         densities, groundtruth_bettis, groundtruth_integratedbettis = [], [], [] # for 3 correlation matrix (3 bettis)
         save_matrix = []
 
-        for index in range(len(data_lst)):
+        for index in range(datanum):
             data = data_lst[index]
             print(f"Data Shape: {data.shape}")
             density, groundtruth_betti, groundtruth_integratedbetti = [], [], [] # for 1 correlation matrix (3 bettis)
@@ -353,7 +366,7 @@ def betti_analysis(data_lst, inputnames, metadata=None):
                 elif doconnectome and index > 2: # only do this once for one scan
                     axsgood[index-3,0].plot(moving_average(edge_densities,dd), curve, c=c_vals[i], label=f"Betti {i+1}")
                     if i == 0: # do it once
-                        sns.heatmap(data, ax=axsgood[index-3,1], cmap='coolwarm', cbar=True, square=True, center=0)
+                        sns.heatmap(data, ax=axsgood[index-3,2], cmap='coolwarm', cbar=True, square=True, center=0)
                         save_matrix.append(data)
                     
                 groundtruth_betti.append(curve)
@@ -366,25 +379,25 @@ def betti_analysis(data_lst, inputnames, metadata=None):
         groundtruth_bettis_save = np.array(groundtruth_bettis)
         groundtruth_integratedbetti_save = np.array(groundtruth_integratedbettis)
         densities = np.array(densities)
-        np.savez(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", \
-                    densities=densities, groundtruth_bettis_save=groundtruth_bettis_save, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, save_matrix=save_matrix)
+        if doconnectome:
+            np.savez(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", \
+                        densities=densities, groundtruth_bettis_save=groundtruth_bettis_save, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, save_matrix=save_matrix)
 
-
-    repeat = 500
+    repeat = 100
     dimension = 2
     noise = 0.0625
     minRatio = 0.1
     print(f"Noise: {noise}: minRatio: {minRatio}; whether noise: {metadata['whethernoise']}; inhibitory: {metadata['inhindex']}; connectome type: {metadata['whetherconnectome']}")
-    readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}.mat"
+    readin_hypfile = f"./zz_pyclique/hyperbolic_dis_n={Nneuron}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"
     readin_files_lst = [readin_hypfile]
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        repeat = 1
+        repeat = 10
         NneuronWselect = max(NneuronWrow, NneuronWcol)
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
 
-        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio)
+        calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio, metadata)
 
         for ax in axsgood.flatten():
             ax.legend()
@@ -432,20 +445,25 @@ def betti_analysis(data_lst, inputnames, metadata=None):
 
             thisbetti = [np.array(subbetti) for subbetti in thisbetti]
             meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
-            fake_integrated_betti = []
-            for jjj in range(3):
-                consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
-                integrated_betti = np.sum([a * b for a, b in zip(meanbetti[jjj], consecutive_differences)])
-                fake_integrated_betti.append(integrated_betti)
             stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
 
-            fake_integrated_bettis.append(fake_integrated_betti)
+            all_fake_integrated_betti = []
+            for jjj in range(3):
+                fake_integrated_betti = []
+                for bettiselect in thisbetti[jjj]:
+                    consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
+                    integrated_betti = np.sum([a * b for a, b in zip(bettiselect, consecutive_differences)])
+                    fake_integrated_betti.append(integrated_betti)
+                all_fake_integrated_betti.append(fake_integrated_betti)
             
+            fake_integrated_bettis.append(all_fake_integrated_betti)
+
             oneerr = []
-            for j in range(3):
+            for j in range(datanum):
                 errbetti = [mean_squared_error(spline_set(meanbetti[i]), spline_set(groundtruth_bettis[j][i])) for i in range(3)]
                 oneerr.append(np.sum(errbetti))
             allerrs.append(oneerr)
+            print(oneerr)
 
             allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
 
@@ -456,21 +474,20 @@ def betti_analysis(data_lst, inputnames, metadata=None):
             synthetic_best = allsynthetic[minerr_index]
             axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
             realbetti, fakebetti = groundtruth_integratedbettis[index], fake_integrated_bettis[minerr_index]
-            print(realbetti)
-            print(fakebetti)
             fakeallbettis.append([realbetti, fakebetti])
             for i in range(3):
                 edge_densities = synthetic_best[2]
                 axs[index].plot(edge_densities, synthetic_best[0][i], c=colorset[iii][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
                 axs[index].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
 
-        np.save(f"./zz_pyclique_results/{label}_bettis_noise{noise}_whether{metadata['whethernoise']}.npy", np.array(fakeallbettis))
+    np.savez(f"./zz_pyclique_results/{label}_bettis_noise{noise}.npz", \
+        fake_integrated_bettis=fake_integrated_bettis, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, bestR=fields[minerr_index], size=Nneuron)
 
-    fig.savefig(f"./zz_pyclique_results/{label}_noise{noise}_whether{metadata['whethernoise']}.png")
-    time.sleep(1000)
+    fig.savefig(f"./zz_pyclique_results/{label}_noise{noise}.png")
+    print(f"Done with {label}")
 
 
-def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, groundtruth_integratedbettis, repeat, dd, noise, minRatio):
+def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, groundtruth_integratedbettis, repeat, dd, noise, minRatio, metadata=None):
     """
     redundant to [betti_analysis] function
     separate for better readability
@@ -516,41 +533,47 @@ def calculate_betti_for_connectome(ax, readin_W_hypfiles, groundtruth_bettis, gr
 
         thisbetti = [np.array(subbetti) for subbetti in thisbetti]
         meanbetti = [moving_average(np.mean(subbetti, axis=0), dd) for subbetti in thisbetti]
-        fake_integrated_betti = []
-        for jjj in range(3):
-            consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
-            integrated_betti = np.sum([a * b for a, b in zip(meanbetti[jjj], consecutive_differences)])
-            fake_integrated_betti.append(integrated_betti)
         stdbetti = [moving_average(np.std(subbetti, axis=0),dd) for subbetti in thisbetti]
+        
+        all_fake_integrated_betti = []
+        for jjj in range(3):
+            fake_integrated_betti = []
+            for bettiselect in thisbetti[jjj]:
+                consecutive_differences = [edge_densities[i+1] - edge_densities[i] for i in range(len(edge_densities) - 1)]
+                integrated_betti = np.sum([a * b for a, b in zip(bettiselect, consecutive_differences)])
+                fake_integrated_betti.append(integrated_betti)
+            all_fake_integrated_betti.append(fake_integrated_betti)
+        
+        print(all_fake_integrated_betti)
 
-        fake_integrated_bettis.append(fake_integrated_betti)
+        fake_integrated_bettis.append(all_fake_integrated_betti)
         
         oneerr = []
         for iii in range(2):
-            errbetti = [mean_squared_error(spline_set(meanbetti[i]), spline_set(groundtruth_bettis[iii][i])) for i in range(3)]
+            errbetti = [mean_squared_error(spline_set(meanbetti[i][:len(meanbetti[i])//2]), spline_set(groundtruth_bettis[iii][i][:len(groundtruth_bettis[iii][i])//2])) for i in range(3)]
             oneerr.append(np.sum(errbetti))
-            allerrs.append(oneerr)
+        allerrs.append(oneerr)
+        print(allerrs)
 
         allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
 
         del thisbetti, meanbetti, stdbetti 
         gc.collect()
 
+    allerrs = np.array(allerrs)
     
     for iii in range(2):
-        allerr = np.array(allerrs[iii])
-        fakeallbettis = []
+        allerr = allerrs[:,iii]
         minerr_index = np.argmin(allerr)
         synthetic_best = allsynthetic[minerr_index]
         realbetti, fakebetti = groundtruth_integratedbettis[iii], fake_integrated_bettis[iii]
-        fakeallbettis.append([realbetti, fakebetti])
         ax[iii,0].set_title(fields[minerr_index])
         for i in range(3):
-            edge_densities = synthetic_best[2]
-            ax[iii,0].plot(edge_densities, synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
-            ax[iii,0].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
+            for dm in range(2):
+                ax[iii,dm].plot(synthetic_best[2], synthetic_best[0][i], c=colorset[0][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
+                ax[iii,dm].fill_between(synthetic_best[2], synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
 
-        # np.save(f'./zz_pyclique_results/{names[iii]}_bettis_noise{noise}_minRatio{minRatio}.npy', np.array(fakeallbettis))
+    np.savez(f"./zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_fitting.npz", \
+                fake_integrated_bettis=fake_integrated_bettis, allsynthetic=allsynthetic)
 
-    del allerrs, allsynthetic, fake_integrated_bettis 
     gc.collect()

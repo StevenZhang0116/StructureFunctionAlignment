@@ -51,9 +51,11 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     """
     """
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
-    session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
+    # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
+    session_scan = [[9,4],[6,4]]
+
     # session_scan = [[6,4]]
-    for_construction = True
+    for_construction = False
     for ss in session_scan:
         run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
                     whethernoise=whethernoise, whetherconnectome=whetherconnectome)
@@ -440,10 +442,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # Betti analysis
     bettiindex = True
     if bettiindex and whethernoise in ["normal", "noise"]: # only do it once
+        doconnectome = True
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
+
         assert data_lst[0].shape == data_lst[1].shape == data_lst[2].shape
-        activity_helper.betti_analysis(data_lst, names, metadata=metadata)
+        activity_helper.betti_analysis(data_lst, names, metadata=metadata, doconnectome=doconnectome)
 
     # if not running Betti analysis, then the connectome must be negative
     if not bettiindex:
