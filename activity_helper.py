@@ -15,7 +15,13 @@ from scipy.interpolate import CubicSpline
 
 import sys
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
+sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/")
+sys.path.append("/gscratch/amath/zihan-zhang/")
+
 import compute_betti_curves
+import metric
+from netrep.metrics import LinearMetric
+
 
 import scienceplots
 plt.style.use('science')
@@ -26,6 +32,14 @@ c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#
 c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#2d3748', '#97266d', '#975a16',]
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
+
+def all_metric(matrix, name):
+    """
+    """
+    if name == "correlation":
+        return np.corrcoef(matrix, rowvar=True)
+    elif name == "cosine":
+        return metric.cosine_distance_matrix(matrix)
 
 def reconstruction(W, activity_extraction_extra_trc, K="all", permute=False):
     """
@@ -142,8 +156,7 @@ def remove_nan_inf_union(matrix):
 
     indices_to_remove = np.union1d(rows_to_remove, columns_to_remove)
 
-    smaller_matrix = np.delete(matrix, indices_to_remove, axis=0)
-    smaller_matrix = np.delete(smaller_matrix, indices_to_remove, axis=1)
+    smaller_matrix = row_column_delete(matrix, indices_to_remove)
 
     print(f"After: {smaller_matrix.shape}")
 
@@ -157,6 +170,11 @@ def cosine_similarity(arr1, arr2):
     norm_b = np.linalg.norm(arr2)
     return dot_product / (norm_a * norm_b)
 
+def row_column_delete(activity_correlation, indices_to_delete):
+    activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=0)
+    activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=1)
+    return activity_correlation
+
 def sanity_check_W(truncated_W_correlation, activity_correlation):
     """
     """
@@ -165,10 +183,8 @@ def sanity_check_W(truncated_W_correlation, activity_correlation):
     cols_to_delete = np.all(mask_inf_nan, axis=0)
     indices_to_delete = np.where(rows_to_delete & cols_to_delete)[0]
 
-    activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=0)
-    activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=1)
-    truncated_W_correlation = np.delete(truncated_W_correlation, indices_to_delete, axis=0)
-    truncated_W_correlation = np.delete(truncated_W_correlation, indices_to_delete, axis=1)
+    activity_correlation = row_column_delete(activity_correlation, indices_to_delete)
+    truncated_W_correlation = row_column_delete(truncated_W_correlation, indices_to_delete)
 
     return truncated_W_correlation, activity_correlation, indices_to_delete
 
@@ -304,7 +320,7 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     originally implemented in microns_activity_analysis.py
     data_lst: [activity_correlation, structure_correlation]
     """
-    label = f"S{metadata['session_info']}s{metadata['scan_info']}"
+    label = f"S{metadata['session_info']}s{metadata['scan_info']}metric{metadata['metric_name']}"
     print(label)
     Nneuron = data_lst[0].shape[0]
     NneuronWrow = data_lst[3].shape[0]
@@ -407,7 +423,6 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
 
         sys.exit()
 
-
     for iii in range(len(readin_files_lst)):
         readin_files = readin_files_lst[iii]
 
@@ -472,17 +487,19 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
         for index in range(allerrs.shape[1]): # for each correlation matrix
             minerr_index = np.argmin(allerrs[:,index])
             synthetic_best = allsynthetic[minerr_index]
-            axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
+            # axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
             realbetti, fakebetti = groundtruth_integratedbettis[index], fake_integrated_bettis[minerr_index]
             fakeallbettis.append([realbetti, fakebetti])
             for i in range(3):
                 edge_densities = synthetic_best[2]
                 axs[index].plot(edge_densities, synthetic_best[0][i], c=colorset[iii][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
                 axs[index].fill_between(edge_densities, synthetic_best[0][i]-synthetic_best[1][i], synthetic_best[0][i]+synthetic_best[1][i], color=c_vals_l[i], alpha=0.2)
+            axs[index].set_ylim([-2, 40])
 
     np.savez(f"./zz_pyclique_results/{label}_bettis_noise{noise}.npz", \
         fake_integrated_bettis=fake_integrated_bettis, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, bestR=fields[minerr_index], size=Nneuron)
 
+    fig.tight_layout()
     fig.savefig(f"./zz_pyclique_results/{label}_noise{noise}.png")
     print(f"Done with {label}")
 

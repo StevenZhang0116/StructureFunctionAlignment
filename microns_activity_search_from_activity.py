@@ -51,8 +51,8 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     """
     """
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[6,4],[7,3],[7,5],[9,3],[9,4]]
-    # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
-    session_scan = [[9,4],[6,4]]
+    session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
+    # session_scan = [[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
 
     # session_scan = [[6,4]]
     for_construction = False
@@ -79,7 +79,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     metadata["whetherconnectome"] = whetherconnectome
 
     # index
-    metric_compare = "correlation"
     sub_correlation_index = "nan_fill"
 
     # proofread & coregisteration overlap information
@@ -222,7 +221,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # figstimulus.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_astimulus_new.png")
 
     # calculate activity correlation
-    activity_correlation_all = np.corrcoef(activity_extraction_extra, rowvar=True)
+    metric_name = "correlation"
+    metadata["metric_name"] = metric_name
+    # activity_correlation_all = np.corrcoef(activity_extraction_extra, rowvar=True)
+    activity_correlation_all = activity_helper.all_metric(activity_extraction_extra, metric_name)
+    activity_cov_all = np.cov(activity_extraction_extra, rowvar=True)
     
     metadata["num_neurons"] = activity_extraction_extra.shape[0]
 
@@ -275,6 +278,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     correlation_index_lst = ["column", "row"]
     W_corrs_all, diags, offdiags, W_samples, indices_delete_lst = [], [], [], [], []
     p_values_all = []
+    
+    for_metric = []
 
     fig, axs = plt.subplots(2,3,figsize=(4*3,4*2))
     fig_dist, ax_dist = plt.subplots(1,3,figsize=(4*3,4*1))
@@ -291,17 +296,25 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 W_trc = used_structure[selected_neurons,:]
                 W_trc = W_trc[:,matching_dendrite]
                 W_corr = np.corrcoef(W_trc, rowvar=True)
+                W_cov = np.cov(W_trc, rowvar=True)
 
             else:
                 W_trc = used_structure[:,selected_neurons]
                 W_trc = W_trc[matching_axon,:]
                 W_corr = np.corrcoef(W_trc, rowvar=False)
+                W_cov = np.cov(W_trc, rowvar=False)
+
             
             W_backupcheck = used_structure[np.ix_(selected_neurons, selected_neurons)]
             W_samples.append(W_trc)
 
         W_corr_all = W_corr
         W_corr, activity_correlation, indices_to_delete = activity_helper.sanity_check_W(W_corr_all, activity_correlation_all)
+
+        W_cov = activity_helper.row_column_delete(W_cov, indices_to_delete)
+        activity_cov = activity_helper.row_column_delete(activity_cov_all, indices_to_delete)
+        assert W_cov.shape == activity_cov.shape
+
         indices_delete_lst.append(indices_to_delete)
         shape_check = W_corr.shape[0]
         print(f"Shape after sanity check (nan/inf): {shape_check}")
@@ -318,13 +331,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # relation_matrix_compare = np.zeros((shape_check, shape_check))
         for i in range(shape_check):
             for j in range(shape_check):
-                if metric_compare == "correlation":
-                    if sub_correlation_index == "zero_out":
-                        correlation, _ = pearsonr(activity_correlation[i], W_corr[j])
-                    elif sub_correlation_index == "nan_fill":
-                        correlation = activity_helper.pearson_correlation_with_nans(activity_correlation[i], W_corr[j])
+                if sub_correlation_index == "zero_out":
+                    correlation, _ = pearsonr(activity_correlation[i], W_corr[j])
+                elif sub_correlation_index == "nan_fill":
+                    correlation = activity_helper.pearson_correlation_with_nans(activity_correlation[i], W_corr[j])
 
-                    relation_matrix[i,j] = correlation
+                relation_matrix[i,j] = correlation
 
         # remove all null information in the whole column/row
         relation_matrix = activity_helper.remove_nan_inf_union(relation_matrix)
@@ -339,7 +351,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axs[corrind,0].set_title(f"Corr(Corr(W), Corr(A)) - {correlation_index}")
         axs[corrind,1].set_title("Corr(A)")
         axs[corrind,2].set_title(f"Corr(W) - {correlation_index}")
-        
 
         mean_diagonal, mean_off_diagonal, t_stat, p_value = activity_helper.test_diagonal_significance(relation_matrix)
         print(f"Mean Diagonal: {mean_diagonal}, Mean Off-Diagonal: {mean_off_diagonal}")
@@ -362,7 +373,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         W_corrs_all.append(W_corr_all)
         np.fill_diagonal(activity_correlation,0)
 
+        # for metric purpose
+        for_metric.append(W_cov)
+        for_metric.append(activity_cov)
+
         dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr, activity_correlation)
+        
         metadata[f"{correlation_index}_angle"] = angle_loader
 
         if correlation_index == "column":
@@ -376,11 +392,15 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 angle_all.append(angle_loader)
             angle_all = np.array(angle_all)
             
-            metadata[f"random_angle"] = np.mean(angle_all, axis=0)
-            metadata[f"random_angle_std"] = np.std(angle_all, axis=0)
+            metadata["random_angle"] = np.mean(angle_all, axis=0)
+            metadata["random_angle_std"] = np.std(angle_all, axis=0)
 
     fig.tight_layout()
-    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_heatmap.png")
+    # fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_heatmap.png")
+
+    if metadata["whethernoise"] == "normal" and metadata["whetherconnectome"] == "count" and R_max == "1":
+        print("Save Data")
+        np.savez(f"./for_metric/S{metadata['session_info']}s{metadata['scan_info']}_WandA.npz", W_in=for_metric[0], W_out=for_metric[2], A1=for_metric[1], A2=for_metric[3])
 
     # make sure neurons are aligned/matched correctly
     # delete all neurons if it is either nan or inf in any of the correlation matrices (row or column)
@@ -440,9 +460,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = True
+    bettiindex = False
     if bettiindex and whethernoise in ["normal", "noise"]: # only do it once
-        doconnectome = True
+        doconnectome = False
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_goodneurons_row, W_goodneurons_col]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
 

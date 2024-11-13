@@ -226,7 +226,6 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
 
 def microns_across_scans_rnn(Kselect):
     def find_pkl_files(directory):
-        
         strname = f".pkl"
         all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
         matching_files = [f for f in all_pkl_files if strname in os.path.basename(f)]
