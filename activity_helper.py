@@ -16,6 +16,7 @@ from scipy.interpolate import CubicSpline
 import sys
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/")
+sys.path.append("/gscratch/amath/zihan-zhang/spatial/")
 sys.path.append("/gscratch/amath/zihan-zhang/")
 
 import compute_betti_curves

@@ -72,7 +72,7 @@ def activity():
     session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
 
     for ss in session_scan:
-        subdata = f"S{ss[0]}s{ss[1]}_bettis_noise0.0625"
+        subdata = f"S{ss[0]}s{ss[1]}{metric}_bettis_noise0.0625"
         groundtruth = f"./zz_pyclique_results/{subdata}"
 
         file = np.load(groundtruth+".npz")
@@ -113,10 +113,12 @@ def activity():
         fig.savefig(f"./zz_pyclique_results/{subdata}_fakebetti.png")
 
 def activity_all():
+    metric = "cosine"
+
     dire = "./zz_pyclique_results/"
     files = [
         file for file in os.listdir(dire)
-        if file.startswith("S") and file.endswith(".npz")
+        if file.startswith("S") and file.endswith(".npz") and metric in file
     ]
     
     cc = []
@@ -137,11 +139,11 @@ def activity_all():
     axs.set_ylabel("Best Rmax")
     axs.legend()
     fig.tight_layout()
-    fig.savefig(f"{dire}activity_all.png")
+    fig.savefig(f"{dire}activity_{metric}_all.png")
 
 
 
 if __name__ == "__main__":
     # activity()
-    connectome()
-    # activity_all()
+    # connectome()
+    activity_all()

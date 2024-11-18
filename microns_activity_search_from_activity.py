@@ -130,6 +130,33 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     good_ct = good_ct[good_ct["classification_system"] == "excitatory_neuron"]
     good_ct_indices = good_ct.index.tolist()
 
+    # only do plot once
+    if [session_info, scan_info] == [8,5]:
+        # delete small group 
+        good_ct = good_ct.loc[good_ct['layer'] != 'L1']
+        good_ct.sort_values(by='layer', inplace=True)
+        cell_type_goodct = good_ct["layer"].tolist()
+
+        breakpoints_all = np.array([[i, cell_type_goodct[i-1]] for i in range(1, len(cell_type_goodct)) if cell_type_goodct[i] != cell_type_goodct[i - 1]])
+        breakpoints, breakpoints_names = breakpoints_all[:, 0].astype(int).tolist(), list(breakpoints_all[:,1])
+        breakpoints_names.append(cell_type_goodct[-1])
+        good_ct_connection, _, _, _ = helper.create_connectivity_as_whole(good_ct, synapse_table)
+        figgoodct, axsgoodct = plt.subplots(figsize=(4,4))
+        sns.heatmap(good_ct_connection, square=True, ax=axsgoodct, cbar=False)
+        axsgoodct.set_xticks(breakpoints)
+        axsgoodct.set_yticks(breakpoints)
+        for line in breakpoints:
+            plt.axvline(x=line, color='red', linestyle='--') 
+            plt.axhline(y=line, color='red', linestyle='--')  
+        breakpoints.insert(0,0)
+        # del breakpoints[-1]
+        axsgoodct.set_xticks(breakpoints)
+        axsgoodct.set_xticklabels(breakpoints_names, rotation=45)
+        axsgoodct.set_yticks(breakpoints)
+        axsgoodct.set_yticklabels(breakpoints_names, rotation=45)
+        figgoodct.tight_layout()
+        figgoodct.savefig(f"./all_good_connections.png")
+
     save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
     session_ds = xr.open_dataset(save_filename)
 
@@ -276,10 +303,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(f"Original selected_neurons: {len(selected_neurons)}")
 
     correlation_index_lst = ["column", "row"]
+    correlation_name_lst = ["Input", "Output"]
     W_corrs_all, diags, offdiags, W_samples, indices_delete_lst = [], [], [], [], []
     p_values_all = []
     
-    for_metric = []
+    for_metric = {}
 
     fig, axs = plt.subplots(2,3,figsize=(4*3,4*2))
     fig_dist, ax_dist = plt.subplots(1,3,figsize=(4*3,4*1))
@@ -313,7 +341,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         W_cov = activity_helper.row_column_delete(W_cov, indices_to_delete)
         activity_cov = activity_helper.row_column_delete(activity_cov_all, indices_to_delete)
-        assert W_cov.shape == activity_cov.shape
 
         indices_delete_lst.append(indices_to_delete)
         shape_check = W_corr.shape[0]
@@ -348,9 +375,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # sns.heatmap(relation_matrix_compare, ax=axs[corrind,1], cbar=True, square=True, cmap="coolwarm", vmin=np.min(relation_matrix_compare), vmax=np.max(relation_matrix_compare))
         sns.heatmap(activity_correlation, ax=axs[corrind,1], cbar=True, square=True)
         sns.heatmap(W_corr, ax=axs[corrind,2], cbar=True, square=True, vmin=0, vmax=1)
-        axs[corrind,0].set_title(f"Corr(Corr(W), Corr(A)) - {correlation_index}")
+        axs[corrind,0].set_title(f"Corr(Corr(W), Corr(A)) - {correlation_name_lst[correlation_index_lst.index(correlation_index)]}")
         axs[corrind,1].set_title("Corr(A)")
-        axs[corrind,2].set_title(f"Corr(W) - {correlation_index}")
+        axs[corrind,2].set_title(f"Corr(W) - {correlation_name_lst[correlation_index_lst.index(correlation_index)]}")
 
         mean_diagonal, mean_off_diagonal, t_stat, p_value = activity_helper.test_diagonal_significance(relation_matrix)
         print(f"Mean Diagonal: {mean_diagonal}, Mean Off-Diagonal: {mean_off_diagonal}")
@@ -374,10 +401,17 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         np.fill_diagonal(activity_correlation,0)
 
         # for metric purpose
-        for_metric.append(W_cov)
-        for_metric.append(activity_cov)
+        assert W_cov.shape == activity_cov.shape
 
-        dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr, activity_correlation)
+        for_metric[f"W_cov_{correlation_index}"] = W_cov
+        for_metric[f"activity_cov_{correlation_index}"] = activity_cov
+        W_corr_copy, activity_correlation_copy = W_corr.copy(), activity_correlation.copy()
+        np.fill_diagonal(W_corr_copy, 1)
+        np.fill_diagonal(activity_correlation_copy, 1)
+        for_metric[f"W_corr_{correlation_index}"] = W_corr_copy
+        for_metric[f"activity_correlation_{correlation_index}"] = activity_correlation_copy
+
+        dim_loader, angle_loader = activity_helper.angles_between_flats_wrap(W_corr_copy, activity_correlation_copy)
         
         metadata[f"{correlation_index}_angle"] = angle_loader
 
@@ -396,11 +430,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             metadata["random_angle_std"] = np.std(angle_all, axis=0)
 
     fig.tight_layout()
-    # fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_heatmap.png")
+    fig.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_heatmap.png")
 
     if metadata["whethernoise"] == "normal" and metadata["whetherconnectome"] == "count" and R_max == "1":
         print("Save Data")
-        np.savez(f"./for_metric/S{metadata['session_info']}s{metadata['scan_info']}_WandA.npz", W_in=for_metric[0], W_out=for_metric[2], A1=for_metric[1], A2=for_metric[3])
+        np.savez(f"./for_metric/S{metadata['session_info']}s{metadata['scan_info']}_WandA.npz", **for_metric)
 
     # make sure neurons are aligned/matched correctly
     # delete all neurons if it is either nan or inf in any of the correlation matrices (row or column)
@@ -490,18 +524,19 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     p_value_one_sided_final = p_value_one_sided if t_stat > 0 else 1 - p_value_one_sided
 
     figallcompare, axsallcompare = plt.subplots(2,1,figsize=(4,4)) # purposefully not square for paper purpose
-    axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Column On-Diagonal', color=c_vals[1], density=True)
-    axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Row On-Diagonal', color=c_vals_l[1], density=True)
-    axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Column Off-Diagonal', color=c_vals[0], density=True)
-    axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Row Off-Diagonal', color=c_vals_l[0], density=True)
+    axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Input On-Diagonal', color=c_vals[1], density=True)
+    axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Output On-Diagonal', color=c_vals_l[1], density=True)
+    axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Input Off-Diagonal', color=c_vals[0], density=True)
+    axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Output Off-Diagonal', color=c_vals_l[0], density=True)
     axsallcompare[0].legend()
     axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
 
     correlation_index_lst.append("random")
+    correlation_name_lst.append("Random")
 
     for correlation_index in correlation_index_lst:
         axsallcompare[1].plot([i+1 for i in range(len(metadata[f"{correlation_index}_angle"]))], metadata[f"{correlation_index}_angle"], \
-                                label=f"{correlation_index}", color=c_vals[correlation_index_lst.index(correlation_index)])
+                                label=f"{correlation_name_lst[correlation_index_lst.index(correlation_index)]}", color=c_vals[correlation_index_lst.index(correlation_index)])
         if correlation_index == "random":
             axsallcompare[1].fill_between([i+1 for i in range(len(metadata[f"random_angle"]))], metadata[f"random_angle"] - metadata[f"random_angle_std"], \
                                     metadata[f"random_angle"] + metadata[f"random_angle_std"], color=c_vals_l[correlation_index_lst.index(correlation_index)])
@@ -512,7 +547,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     axsallcompare[1].xaxis.set_major_locator(ticker.MaxNLocator(4)) 
 
     figallcompare.tight_layout()
-    # figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_offdiagcompare_all.png")
+    figallcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_offdiagcompare_all.png")
 
     if for_construction:
 
