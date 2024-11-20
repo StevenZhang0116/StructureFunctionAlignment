@@ -42,30 +42,38 @@ def all_metric(matrix, name):
     elif name == "cosine":
         return metric.cosine_distance_matrix(matrix)
 
-def reconstruction(W, activity_extraction_extra_trc, K="all", permute=False):
+def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permute=False):
     """
     add option to only take top K components in reconstruction
     if K=None, then using all neurons (without any low-pass filter)
     """
-    if K == "all":
-        K = W.shape[0]
+
+    if isinstance(K, str):
+        if K[0] == "r":
+            br = K.index("_")
+            K = int(K[br+1:])
+            # print(K)
+            random = True
 
     filtered_matrix = np.zeros_like(W)
     for i in range(W.shape[0]):
-        top_k_indices = np.argsort(W[i])[-K:]        
+        if not random:
+            top_k_indices = np.argsort(W[i])[-K:]        
+        else:
+            top_k_indices = np.random.choice(len(W[i]), size=K, replace=False)
+
         filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
     
     row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
 
     filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
-    # # Oct 30th: 
-    # assert np.sum(np.diag(filtered_matrix_normalized)) < 1e-5
+    
 
-    # permute the matrix but still keep it symmetric
-    if permute == "rowwise":
-        filtered_matrix_normalized = permute_symmetric_matrix(filtered_matrix_normalized)
-    elif permute == "cellwise":
-        filtered_matrix_normalized = permute_symmetric_matrix_cellwise(filtered_matrix_normalized)
+    # # permute the matrix but still keep it symmetric
+    # if permute == "rowwise":
+    #     filtered_matrix_normalized = permute_symmetric_matrix(filtered_matrix_normalized)
+    # elif permute == "cellwise":
+    #     filtered_matrix_normalized = permute_symmetric_matrix_cellwise(filtered_matrix_normalized)
 
     activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
     return activity_reconstruct_a, filtered_matrix_normalized
@@ -99,7 +107,6 @@ def find_intervals(arr):
     intervals[str(arr[start])].append((start, len(arr) - 1))
 
     return intervals
-
 
 def merge_arrays(arrays):
     """
@@ -281,24 +288,15 @@ def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=
 
     return dim_loader, angle_loader
 
-def test_diagonal_significance(matrix):
-    """
-    """
-    assert matrix.shape[0] == matrix.shape[1], "Matrix must be square"
-    
-    diagonal = np.diag(matrix)
-    
-    i, j = np.indices(matrix.shape)
-    off_diagonal = matrix[i != j]
-    
-    mean_diagonal = np.mean(diagonal)
-    mean_off_diagonal = np.mean(off_diagonal)
-    # t_stat, p_value = stats.ttest_1samp(diagonal, mean_off_diagonal)
-
-    t_stat, p_value = stats.ttest_ind(diagonal, off_diagonal, equal_var=False)
+def stats_test(array1, array2):
+    t_stat, p_value = stats.ttest_ind(array1, array2, equal_var=False)
     p_value = p_value / 2 if t_stat > 0 else 1 - p_value / 2
-    
-    return mean_diagonal, mean_off_diagonal, t_stat, p_value
+    return p_value
+
+def stats_test2(array1, array2):
+    t_stat, p_value = stats.ttest_rel(array1, array2)
+    p_value_one_sided_final = p_value / 2 if t_stat > 0 else 1 - p_value / 2
+    return p_value_one_sided_final
 
 def moving_average(data, window_size):
     """

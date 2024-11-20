@@ -4,8 +4,9 @@ import numpy
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-
 from scipy import stats
+
+import activity_helper
 
 import scienceplots
 plt.style.use('science')
@@ -14,7 +15,7 @@ plt.style.use(['no-latex'])
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnectome):
+def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnectome, scan_specific):
 
     def find_pkl_files(directory):
         # only select pkl files with desired dimension and R_max
@@ -25,11 +26,12 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
 
         return matching_files
 
-    directory_path = "./output/"
+    if scan_specific:
+        directory_path = "./output/"
+    else:
+        directory_path = "./output-all/"
     pkl_files = find_pkl_files(directory_path)
     print(pkl_files)
-
-    # assert len(pkl_files) == 14
     
     coldata, rowdata, somadata = [], [], []
     rmax_quantiles = []
@@ -61,7 +63,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
         column_primary_angle = np.mean(data["column_angle"][0:cc])
         row_primary_angle = np.mean(data["row_angle"][0:cc])
         allk_medians = data["allk_medians"][Kselect][ttind]
-        allk_medians_session = data["allk_medians_session"]
+        allk_medians_session = data["allk_medians_session"][Kselect]
 
         activity_explain = allk_medians[0]
 
@@ -90,16 +92,8 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
             session_outhyp = allk_medians_session[5]
             session_outeul = allk_medians_session[6]
         
-        
-        in_hyp_ratio_pm = allk_medians[8]/allk_medians[1]
-        in_eul_ratio_pm = allk_medians[9]/allk_medians[1]
-
-        
-        out_hyp_ratio_pm = allk_medians[10]/allk_medians[4]
-        out_eul_ratio_pm = allk_medians[11]/allk_medians[4]
-
-        coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, in_hyp_ratio_pm, in_eul_ratio_pm, soma_explainratio, session_act, session_in, session_inhyp, session_ineul])
-        rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, out_hyp_ratio_pm, out_eul_ratio_pm, soma_explainratio, session_act, session_out, session_outhyp, session_outeul])
+        coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, np.nan, np.nan, soma_explainratio, session_act, session_in, session_inhyp, session_ineul])
+        rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, np.nan, np.nan, soma_explainratio, session_act, session_out, session_outhyp, session_outeul])
         
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
@@ -163,7 +157,10 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
                     data = [hypratio/activity_base, toactratio/activity_base]
                 else:
                     data = [hypratio/activity_base, eulratio/activity_base, toactratio/activity_base]
+                    print(activity_helper.stats_test(data[0], data[2]))
                     data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
+                    print(activity_helper.stats_test(data_session[0], data_session[2]))
+
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
         
@@ -187,7 +184,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
 
 
     fig.tight_layout()
-    fig.savefig(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
+    fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
     if showpermute:
         names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
@@ -211,7 +208,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
             ax.set_ylabel("Explanation Ratio")
 
     figexp.tight_layout()
-    figexp.savefig(f"./output/zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
+    figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
     rmax_quantiles = np.array(rmax_quantiles)
     axrmax.plot(rmax_quantiles[:,0], "-o", label="Out")
@@ -221,7 +218,7 @@ def microns_across_scans(R_max, dimension, Kselect, whethernoise, whetherconnect
     axrmax.set_ylabel("Rmax Quantile")
     figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
-    np.savez(f"./output/zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.npz", alldata=alldata)
+    np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.npz", alldata=alldata)
 
 
 def microns_across_scans_rnn(Kselect):
