@@ -113,7 +113,7 @@ def activity():
         fig.savefig(f"./zz_pyclique_results/{subdata}_fakebetti.png")
 
 def activity_all():
-    metric = "cosine"
+    metric = "correlation"
 
     dire = "./zz_pyclique_results/"
     files = [
@@ -134,7 +134,7 @@ def activity_all():
 
     fig, axs = plt.subplots(1,1,figsize=(4,4))
     axs.scatter(cc[:,1], cc[:,0])
-    axs.plot(xx_line, yy_line, color='red', linestyle="--", label=f"r={np.round(r_value,3)}")
+    axs.plot(xx_line, yy_line, color='red', linestyle="--", label=f"r^2={np.round(r_value,3)}")
     axs.set_xlabel("# Neurons")
     axs.set_ylabel("Best Rmax")
     axs.legend()

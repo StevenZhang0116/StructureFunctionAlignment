@@ -12,6 +12,7 @@ import seaborn as sns
 import scipy 
 from sklearn.metrics import mean_squared_error
 from scipy.interpolate import CubicSpline
+from scipy.optimize import curve_fit
 
 import sys
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
@@ -33,6 +34,21 @@ c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#
 c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#2d3748', '#97266d', '#975a16',]
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
+
+
+def shepard_fit(x, y, epsilon=1e-6):
+    """
+    Fits the Shepard diagram data to the equation y = a * (x - x0)^(k+1).
+    """
+    def model(x, a, k):
+        x0 = np.min(x) - epsilon
+        return a * (x - x0) ** (k + 1)
+    
+    initial_guess = [1.0, 1.0]
+    
+    popt, pcov = curve_fit(model, x, y, p0=initial_guess)
+    
+    return popt, pcov
 
 def all_metric(matrix, name):
     """
@@ -253,24 +269,24 @@ def angles_between_flats(v_lst, u_lst):
     """
     Calculate the smallest principal angle between two subspaces spanned by vectors in v_lst and u_lst.
     """
-    # Stack vectors to form matrices V and U, vectors are reshaped to (N, 1) for proper matrix formation
     V = np.column_stack([v.reshape(-1, 1) for v in v_lst])
     U = np.column_stack([u.reshape(-1, 1) for u in u_lst])
-    
-    # Orthonormalize the columns of V and U using QR decomposition
     Q1, _ = np.linalg.qr(V)
     Q2, _ = np.linalg.qr(U)
-    
-    # Compute the matrix of cosines of angles (dot products) between the bases
     M = np.dot(Q1.T, Q2)
-    
-    # Use SVD to find the cosines of the principal angles
-    _, sigma, _ = np.linalg.svd(M)
-    
-    # The smallest principal angle is the arccos of the largest singular value
+    _, sigma, _ = np.linalg.svd(M)    
     smallest_angle_degrees = np.degrees(np.arccos(np.max(sigma)))
     
     return smallest_angle_degrees
+
+def reconstruct_matrix(U, S, Vh, num_dimension):
+    """
+    Reconstruct the matrix using the top `num_dimension` singular values and vectors.
+    """
+    S_approx = np.diag(S[:num_dimension])  
+    U_approx = U[:, :num_dimension]      
+    Vh_approx = Vh[:num_dimension, :]   
+    return U_approx @ S_approx @ Vh_approx
 
 def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=16):
     """
@@ -279,14 +295,22 @@ def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=
     U_activity, S_activity, Vh_activity = np.linalg.svd(activity_correlation)
 
     dim_loader, angle_loader = [], []
+    lower_approx_connectome, lower_approx_activity = [], []
     for num_dimension in range(1,angle_consideration):
+        W_corr_approx = reconstruct_matrix(U_connectome, S_connectome, Vh_connectome, num_dimension)
+        activity_correlation_approx = reconstruct_matrix(U_activity, S_activity, Vh_activity, num_dimension)
+
+        lower_approx_connectome.append(W_corr_approx)
+        lower_approx_activity.append(activity_correlation_approx)
+
         U_comps_activity = [U_activity[:,i] for i in range(num_dimension)]
         U_comps_connectome = [U_connectome[:,i] for i in range(num_dimension)]
         angle_in_bewteen = angles_between_flats(U_comps_activity, U_comps_connectome)
+
         dim_loader.append(num_dimension)
         angle_loader.append(angle_in_bewteen)
 
-    return dim_loader, angle_loader
+    return dim_loader, angle_loader, lower_approx_connectome, lower_approx_activity
 
 def stats_test(array1, array2):
     t_stat, p_value = stats.ttest_ind(array1, array2, equal_var=False)

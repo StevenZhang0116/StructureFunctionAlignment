@@ -23,7 +23,8 @@ file_lst = [file for file in os.listdir("./for_metric/") if file.endswith('.npz'
 result = []
 result_ang = []
 
-corr = "cov"
+corr = "corr"
+lowrank = "lowrank"
 
 for file in file_lst:
     data = np.load(f"./for_metric/{file}")
@@ -33,13 +34,18 @@ for file in file_lst:
     elif corr == "corr":
         W_in, W_out, A1, A2 = data[f'W_corr_column'], data[f'W_corr_row'], data[f'activity_correlation_column'], data[f'activity_correlation_row']
 
-    ans_in = praveen_metric(W_in, A1)
-    ans_out = praveen_metric(W_out, A2)
+    dim_loader1, angle_loader1, low_win, low_a1 = activity_helper.angles_between_flats_wrap(W_in, A1)
+    dim_loader2, angle_loader2, low_wout, low_a2 = activity_helper.angles_between_flats_wrap(W_out, A2)
 
-    dim_loader1, angle_loader1 = activity_helper.angles_between_flats_wrap(W_in, A1)
-    dim_loader2, angle_loader2 = activity_helper.angles_between_flats_wrap(W_out, A2)
+    if lowrank == "lowrank":
+        ans_in = [praveen_metric(low_win[i], low_a1[i]) for i in range(len(low_win))]
+        ans_out = [praveen_metric(low_wout[i], low_a2[i]) for i in range(len(low_wout))]
+        result.append([np.mean(ans_in), np.mean(ans_out)])
+    else:
+        ans_in = praveen_metric(W_in, A1)
+        ans_out = praveen_metric(W_out, A2)
+        result.append([ans_in, ans_out])
 
-    result.append([ans_in, ans_out])
     result_ang.append([np.mean(angle_loader1), np.mean(angle_loader2)])
 
 result = np.array(result)
@@ -55,5 +61,7 @@ yy_line = slope * xx_line + intercept
 fig, axs = plt.subplots(figsize=(4,4))
 axs.scatter(result_diff, result_ang_diff)
 axs.plot(xx_line, yy_line, color='red', label=f"r={np.round(r_value,3)}")
+axs.set_ylabel("In Angle - Out Angle")
+axs.set_xlabel("In Praveen Metric - Out Praveen Metric")
 axs.legend()
-fig.savefig("praveen.png")
+fig.savefig(f"praveen_{corr}_{lowrank}.png")

@@ -3,13 +3,14 @@ import os
 import scipy 
 import time
 
-def summarize_data(ww, cc, index):
+def summarize_data(ww, cc, ss, index, scan_specific):
+
     assert index in ["in", "out", "activity"]
 
     output_directory = "./zz_data"
 
     if index in ["in", "out"]:
-        search_string = f"noise_{ww}_cc_{cc}"
+        search_string = f"noise_{ww}_cc_{cc}_ss_{ss}"
         dataname = "connectome"
     else:
         search_string = "activity"

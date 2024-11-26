@@ -19,7 +19,7 @@ def microns_parameter_search(dimension, Kselect, whethernoise, whetherconnectome
             return match.group(1)
         return None 
 
-    directory = "./output/"
+    directory = "./output-all/"
     notwantR = []
     npz_files = [
         file for file in glob.glob(os.path.join(directory, "*.npz"))
@@ -37,6 +37,10 @@ def microns_parameter_search(dimension, Kselect, whethernoise, whetherconnectome
     r_values, npz_files = zip(*r_files_pairs)
     r_values = list(r_values)
     npz_files = list(npz_files)
+
+    # select only part of the data
+    r_values = r_values[0:-1]
+    npz_files = npz_files[0:-1]
 
     hypin_data, hypout_data = [], []
     hypin_data_session, hypout_data_session = [], []
