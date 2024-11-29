@@ -15,7 +15,7 @@ plt.style.use(['no-latex'])
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whetherconnectome, scan_specific):
+def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whetherconnectome, whethersubsample, scan_specific):
 
     Krange_data = []
 
@@ -25,7 +25,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
         def find_pkl_files(directory):
             # only select pkl files with desired dimension and R_max
             strname1 = f"D{dimension}_R{R_max}.pkl"
-            strname2 = f"noise_{whethernoise}_cc_{whetherconnectome}"
+            strname2 = f"noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}"
             all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
             matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
 

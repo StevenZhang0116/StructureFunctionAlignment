@@ -629,6 +629,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             print("Use All Data")
             hyp_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
             hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}_microns__{pendindex}_embed_hypdist.mat"
+            hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
             eulembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed_eulmds.mat"
             inindex, outindex = 1, 0
             output_path = "./output-all"
@@ -661,6 +662,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # **** Hyperbolic Output ****
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex]  
+        hypembed_connectome_out_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][outindex] 
         assert hypembed_connectome_distance_out.shape == corr_gt_in.shape
         rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out, float(R_max))
         metadata["rmax_quantile_out"] = rmax_quantile_out
@@ -671,6 +673,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # **** Hyperbolic Input ****
         hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][inindex]
+        hypembed_connectome_in_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][inindex] 
         assert hypembed_connectome_distance_in.shape == corr_gt_in.shape
         rmax_quantile_in = activity_helper.find_quantile(hypembed_connectome_distance_in, float(R_max))
         metadata["rmax_quantile_in"] = rmax_quantile_in
@@ -705,15 +708,24 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         soma_distances_trc = activity_helper.find_value_for_quantile(soma_distances_trc, np.mean([rmax_quantile_in, rmax_quantile_out])) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
 
-        figshowembedding, axs_showembedding = plt.subplots(1,2,figsize=(4*2,4))
-        hb1 = axs_showembedding[0].hexbin(eulembed_connectome_in[:, 0], eulembed_connectome_in[:, 1], gridsize=50, cmap='viridis')
-        axs_showembedding[0].set_title("Input Embedding")
-        fig.colorbar(hb1, ax=axs_showembedding[0], label='Frequency')
-        hb2 = axs_showembedding[1].hexbin(eulembed_connectome_out[:, 0], eulembed_connectome_out[:, 1], gridsize=50, cmap='viridis')
-        axs_showembedding[1].set_title("Output Embedding")
-        fig.colorbar(hb2, ax=axs_showembedding[1], label='Frequency')
-        axs_showembedding[0].set_aspect('equal')
-        axs_showembedding[1].set_aspect('equal')
+        figshowembedding, axs_showembedding = plt.subplots(2,2,figsize=(4*2,4*2))
+        
+        hb1 = axs_showembedding[0,0].hexbin(eulembed_connectome_in[:, 0], eulembed_connectome_in[:, 1], gridsize=50, cmap='viridis')
+        axs_showembedding[0,0].set_title("Input Embedding - Eul")
+        fig.colorbar(hb1, ax=axs_showembedding[0,0], label='Frequency')
+        hb2 = axs_showembedding[1,0].hexbin(eulembed_connectome_out[:, 0], eulembed_connectome_out[:, 1], gridsize=50, cmap='viridis')
+        axs_showembedding[1,0].set_title("Output Embedding - Eul")
+        fig.colorbar(hb2, ax=axs_showembedding[1,0], label='Frequency')
+
+        hb1 = axs_showembedding[0,1].hexbin(hypembed_connectome_in_pt[:, 0], hypembed_connectome_in_pt[:, 1], gridsize=50, cmap='viridis')
+        axs_showembedding[0,1].set_title("Input Embedding - Hyp")
+        fig.colorbar(hb1, ax=axs_showembedding[0,1], label='Frequency')
+        hb2 = axs_showembedding[1,1].hexbin(hypembed_connectome_out_pt[:, 0], hypembed_connectome_out_pt[:, 1], gridsize=50, cmap='viridis')
+        axs_showembedding[1,1].set_title("Output Embedding - Hyp")
+        fig.colorbar(hb2, ax=axs_showembedding[1,1], label='Frequency')
+
+        for ax in axs_showembedding.flatten():
+            ax.set_aspect('equal')
         figshowembedding.tight_layout()
         figshowembedding.savefig(f"{output_path}/fromac_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_embedding.png")
 
