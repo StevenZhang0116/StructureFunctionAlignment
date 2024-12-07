@@ -16,6 +16,8 @@ c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#71
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
 def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whetherconnectome, whethersubsample, scan_specific):
+    """
+    """
 
     Krange_data = []
 
@@ -194,7 +196,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
 
 
         fig.tight_layout()
-        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
+        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}.png")
 
         if showpermute:
             names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
@@ -218,7 +220,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
                 ax.set_ylabel("Explanation Ratio")
 
         figexp.tight_layout()
-        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
+        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}.png")
 
         rmax_quantiles = np.array(rmax_quantiles)
         axrmax.plot(rmax_quantiles[:,0], "-o", label="Out")
@@ -228,7 +230,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
         axrmax.set_ylabel("Rmax Quantile")
         figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.png")
 
-        np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}.npz", alldata=alldata)
+        np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}.npz", alldata=alldata)
 
     figacrossK, axsacrossK = plt.subplots(figsize=(4,4))
     x_ticks = ["All", "Top 50%", "Top 20%", "Random 50%", "Random 20%"]

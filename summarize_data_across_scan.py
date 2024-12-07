@@ -4,6 +4,8 @@ import scipy
 import time
 
 def summarize_data(ww, cc, ss, index, scan_specific):
+    """
+    """
 
     assert index in ["in", "out", "activity"]
 
@@ -22,10 +24,13 @@ def summarize_data(ww, cc, ss, index, scan_specific):
 
     data_files = [
         f for f in os.listdir(output_directory)
-        if all(cond in f for cond in [search_string, f"_{index}", "microns"]) and f.endswith(".mat")
+        if all(cond in f for cond in [search_string, f"_{index}.mat", "microns"]) and f.endswith(".mat")
     ]
 
-    assert len(data_files) == 12
+    print(data_files)
+    print(len(data_files))
+
+    assert len(data_files) == 12 or len(data_files) == 11
 
     connectome_lst, tag_lst = [], []
 

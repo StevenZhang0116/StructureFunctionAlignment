@@ -1,18 +1,18 @@
-import numpy as np 
-import matplotlib.pyplot as plt
-from scipy import stats
-from scipy.sparse import csr_matrix
-from scipy.stats import pearsonr
-from sklearn.preprocessing import StandardScaler
+
 import time
 import random
 import gc
 import seaborn as sns
-
+import numpy as np 
+import matplotlib.pyplot as plt
 import scipy 
-from sklearn.metrics import mean_squared_error
 from scipy.interpolate import CubicSpline
 from scipy.optimize import curve_fit
+from scipy import stats
+from scipy.sparse import csr_matrix
+from scipy.stats import pearsonr, entropy 
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, mutual_info_score
 
 import sys
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
@@ -35,6 +35,10 @@ c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
+def scaling_help(A):
+    B = A.max() - A
+    B_normalized = (B - B.min()) / (B.max() - B.min())
+    return B_normalized
 
 def shepard_fit(x, y, epsilon=1e-6):
     """
@@ -50,7 +54,94 @@ def shepard_fit(x, y, epsilon=1e-6):
     
     return popt, pcov
 
-def all_metric(matrix, name):
+def euclidean_connectome(matrix):
+    """
+    assume N*M shape; the output is technically distance so inversion is needed to transform
+    """
+    eul_mat = np.zeros((matrix.shape[0], matrix.shape[0]))
+    matrix = (matrix >= 1).astype(int)
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[0]):
+            eul_mat[i,j] = np.linalg.norm(matrix[i] - matrix[j])
+    return eul_mat
+
+def variation_of_information(x, y):
+    """
+    Compute the Variation of Information (VI) between two binary vectors x and y.
+
+    VI(X,Y) = H(X) + H(Y) - 2*I(X;Y)
+
+    Where:
+    - H(X) and H(Y) are the entropies of X and Y.
+    - I(X;Y) is the mutual information between X and Y.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    
+    # Compute the joint frequencies to derive probabilities
+    # For binary data, we have categories {0,1}, but this approach is general.
+    contingency = np.zeros((2, 2))
+    for xi, yi in zip(x, y):
+        contingency[xi, yi] += 1
+    
+    # Convert counts to probabilities
+    joint_prob = contingency / contingency.sum()
+    
+    # Compute marginals
+    pX = joint_prob.sum(axis=1)
+    pY = joint_prob.sum(axis=0)
+    
+    # Entropies
+    Hx = entropy(pX, base=2)
+    Hy = entropy(pY, base=2)
+    
+    # Mutual Information using sklearn (it expects discrete labels, so it can use counts internally)
+    # Note: mutual_info_score does not directly take probabilities, it uses label frequencies.
+    # We can just call it on x and y directly.
+    Ixy = mutual_info_score(x, y) / np.log(2)  # mutual_info_score is in nats, convert to bits by dividing by ln(2)
+    
+    VI = Hx + Hy - 2 * Ixy
+    return VI
+
+def variation_of_information_matrix(matrix):
+    """
+    Compute the Variation of Information (VI) matrix for a binary matrix.
+    """
+    N = matrix.shape[0]
+    return np.array([[variation_of_information(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
+
+def other_diss_matrix(matrix):
+    """
+    Use different dissimilarity metrics to compute the distance matrix.
+    """
+    N = matrix.shape[0]
+
+    def czekanowski(u, v):
+        """
+        Czekanowski distance.
+        """
+        return np.sum(np.abs(u - v)) / np.sum(u + v)
+
+
+    def dice(u, v):
+        """
+        Dice dissimilarity.
+        """
+        u_v = u - v
+        return np.dot(u_v, u_v) / (np.dot(u, u) + np.dot(v, v))
+
+    def jaccard(u, v):
+        """
+        Jaccard distance.
+        """
+        uv = np.dot(u, v)
+        return 1 - (uv / (np.dot(u, u) + np.dot(v, v) - uv))
+
+    diss_func = jaccard
+    
+    return 1 - np.array([[diss_func(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
+
+def standard_metric(matrix, name):
     """
     """
     if name == "correlation":
@@ -362,7 +453,7 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     try:
         if doconnectome:
             # if already calculated in the previous run
-            data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", allow_pickle=True)
+            data = np.load(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_conn{metadata['connectome_name']}.npz", allow_pickle=True)
             densities = data['densities']    
             groundtruth_bettis = data['groundtruth_bettis_save']
             groundtruth_integratedbettis = data['groundtruth_integratedbetti_save']
@@ -374,7 +465,6 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
                     axsgood[ind,1].set_xlim([-0.01,0.21])
                 sns.heatmap(save_matrix[ind], ax=axsgood[ind,2], cmap='coolwarm', cbar=True, square=True, center=0)
             print("period saving")
-            figgood.savefig(f"./zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}_backup.png")
 
         else:
             raise Exception("Activity Calculation Only!")
@@ -419,8 +509,10 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
         groundtruth_integratedbetti_save = np.array(groundtruth_integratedbettis)
         densities = np.array(densities)
         if doconnectome:
-            np.savez(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}.npz", \
+            np.savez(f"zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_conn{metadata['connectome_name']}.npz", \
                         densities=densities, groundtruth_bettis_save=groundtruth_bettis_save, groundtruth_integratedbetti_save=groundtruth_integratedbetti_save, save_matrix=save_matrix)
+
+        figgood.savefig(f"./zz_pyclique_results/whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}_conn{metadata['connectome_name']}_backup.png")
 
     repeat = 100
     dimension = 2
