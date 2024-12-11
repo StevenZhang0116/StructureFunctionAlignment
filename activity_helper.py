@@ -14,6 +14,9 @@ from scipy.stats import pearsonr, entropy
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mutual_info_score
 
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+
 import sys
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/pyclique")
 sys.path.append("/gscratch/amath/zihan-zhang/spatial/demo/")
@@ -24,7 +27,6 @@ import compute_betti_curves
 import metric
 from netrep.metrics import LinearMetric
 
-
 import scienceplots
 plt.style.use('science')
 plt.style.use(['no-latex'])
@@ -34,6 +36,57 @@ c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#
 c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#2d3748', '#97266d', '#975a16',]
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
+
+def plot_soma_distribution(soma_data_dfs, output_name):
+    """
+    given a list of dataframes (subject to different selection criteria), plot the soma distribution for each
+    """
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs=[
+            [{"type": "scene"}, {"type": "scene"}]
+        ]
+    )
+
+    for sdf, soma_data_d in enumerate(soma_data_dfs):
+        scale_factor = 1 / 1000
+        good_ct_all_soma_x = soma_data_d["pt_position_x_trafo"].to_numpy() * scale_factor
+        good_ct_all_soma_y = soma_data_d["pt_position_y_trafo"].to_numpy() * scale_factor
+        good_ct_all_soma_z = soma_data_d["pt_position_z_trafo"].to_numpy() * scale_factor
+
+        soma_position = np.array([good_ct_all_soma_x, good_ct_all_soma_y, good_ct_all_soma_z]).T
+
+        trace = go.Scatter3d(
+            x=soma_position[:, 0],
+            y=soma_position[:, 1],
+            z=soma_position[:, 2],
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=c_vals[sdf],
+                colorscale='Viridis',
+                opacity=0.8
+            )
+        )
+
+        fig.add_trace(trace, row=1, col=sdf+1)
+
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Z',
+        ),
+        scene2=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Z',
+        ),
+        margin=dict(l=0, r=0, b=0, t=0)
+    )
+
+    fig.write_html(output_name)
+
 
 def scaling_help(A):
     B = A.max() - A

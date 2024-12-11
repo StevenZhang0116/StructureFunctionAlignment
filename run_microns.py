@@ -9,8 +9,8 @@ if __name__ == "__main__":
     D = 2
     # R_max_lst = ["6.000000e-01"]
     # D = 3
-    ww = "normal"
-    cc = "count"
+    ww = "noise"
+    cc = "binary"
     ss = "all"
     # for connectome data, coming from scan_specific is True
     # for activity data, coming from scan_specific is False

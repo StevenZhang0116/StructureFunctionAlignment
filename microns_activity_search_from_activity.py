@@ -62,7 +62,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
-    for_construction = False
+    for_construction = True
     for_parallel = False
 
     job_num = -1 if for_parallel else 1 
@@ -87,6 +87,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     Others are considered as compartive/ablation study
     """
     print(f"{session_info}: {scan_info}")
+    pendindex = f"noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}" 
 
     assert whethernoise in ["normal", "glia", "noise", "all"]
     assert whetherconnectome in ["count", "binary", "psd"]
@@ -108,8 +109,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(len(prf_coreg))
 
     # read in microns cell/synapse information
-    cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
-    # cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240603.feather")
+    # loading in different versions of cell tables
+    # use the largest/latest version and subsample for later analysis 
+    cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
+    cell_table_old = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240603.feather")
+
+    cell_table = cell_table_old
 
     if whethernoise == "normal":
         matching_axon = cell_table[(cell_table["status_axon"].isin(["extended", "clean"])) & 
@@ -158,15 +163,22 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     goodaxons = cell_table[(cell_table["status_axon"].isin(["extended", "clean"]))].index.tolist()
     gooddendrites = cell_table[(cell_table["full_dendrite"] == True)].index.tolist()
 
-    good_ct = cell_table[(cell_table["status_axon"].isin(["extended", "clean"])) & (cell_table["full_dendrite"] == True)]
+    good_ct = copy.deepcopy(cell_table)
     good_ct = good_ct[good_ct["classification_system"] == "excitatory_neuron"]
-    good_ct_pt_rootids = good_ct["pt_root_id"].to_numpy()
-    good_ct_indices = good_ct.index.tolist()
+    # consider both axonal and dendritic restriction
+    good_ct_all = good_ct[(good_ct["status_axon"].isin(["extended", "clean"])) & (good_ct["full_dendrite"] == True)]
+    print(good_ct_all["cell_type"].value_counts(normalize=True))
+    good_ct_all_pt_rootids = good_ct_all["pt_root_id"].to_numpy()
+    # only consider the axonal restriction
+    good_ct_axons = good_ct[good_ct["status_axon"].isin(["extended", "clean"])]
+    goot_ct_axons_pt_rootids = good_ct_axons["pt_root_id"].to_numpy()
+
+    good_ct_indices = good_ct_all.index.tolist()
 
     # only do plot once
-    if [session_info, scan_info] == [8,5]:
+    old_good_ct = copy.deepcopy(good_ct)
+    if [session_info, scan_info] == [4,7]:
         # delete small group 
-        old_good_ct = copy.deepcopy(good_ct)
         good_ct = good_ct.loc[good_ct['layer'] != 'L1']
         good_ct.sort_values(by='layer', inplace=True)
         cell_type_goodct = good_ct["layer"].tolist()
@@ -203,18 +215,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     activity_extraction = []
     activity_extraction_extra = []
 
-    for index, pr_root_id in enumerate(cell_table["pt_root_id"]):
-        # Dec 5th Update: only consider neurons that 1) functionally coregistered; 2) structurally confident
+    for index, pt_root_id in enumerate(cell_table["pt_root_id"]):
+        # Dec 5th Update: only consider neurons that 1) functionally coregistered; 2) structurally confident (far more strict on axons than dendrites)
         # previously we don't have 2) in the consideration
-        if pr_root_id in prf_coreg_ids and pr_root_id in good_ct_pt_rootids:
-            cell_row = cell_table[cell_table["pt_root_id"] == pr_root_id]
+        # Dec 10th Update: used as a control for supplement
+
+        # if pt_root_id in prf_coreg_ids and pt_root_id in good_ct_all_pt_rootids:
+        if pt_root_id in prf_coreg_ids:
+            cell_row = cell_table[cell_table["pt_root_id"] == pt_root_id]
             # only select neurons that are excitatory 
             if cell_row["classification_system"].item() in ["excitatory_neuron"]:
 
                 selected_neurons.append(index)
                 # count += 1
                 # Print the corresponding row in prf_coreg
-                matching_row = prf_coreg[prf_coreg["pt_root_id"] == pr_root_id]
+                matching_row = prf_coreg[prf_coreg["pt_root_id"] == pt_root_id]
 
                 if len(matching_row) > 1:
                     matching_row = matching_row.iloc[0]
@@ -318,7 +333,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         W_goodneurons_col_info = used_structure[:,good_ct_indices]
     elif whethernoise == "normal":
         W_goodneurons_row_info = used_structure[np.ix_(good_ct_indices, gooddendrites)]
-        W_goodneurons_col_info = used_structure[np.ix_(goodaxons,good_ct_indices)]
+        W_goodneurons_col_info = used_structure[np.ix_(goodaxons, good_ct_indices)]
 
     if [session_info, scan_info] == [8,5]:
         tsne_layers = old_good_ct["layer"].tolist()
@@ -328,6 +343,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     print(f"W_goodneurons_row_info: {W_goodneurons_row_info.shape}")
     print(f"W_goodneurons_col_info: {W_goodneurons_col_info.shape}")
+
+    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_out.mat", {'connectome': W_goodneurons_row_info, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
+    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_in.mat", {'connectome': W_goodneurons_col_info.T, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
 
     W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
     W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
@@ -552,10 +570,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # make sure the act, conn_in, and conn_out has the matched shape
     assert len(good_cells_id) == out_sample_corr_trc.shape[0] == in_sample_corr_trc.shape[1] == activity_extraction_extra_trc.shape[0]
 
-    pendindex = f"noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}" 
-
     # output path depending on whether to use scan_specific data
-
     scipy.io.savemat(f"./zz_data/microns_{session_info}_{scan_info}_{pendindex}_connectome_out.mat", {'connectome': out_sample_trc, 'tag': good_cells_id})
     scipy.io.savemat(f"./zz_data/microns_{session_info}_{scan_info}_{pendindex}_connectome_in.mat", {'connectome': in_sample_trc, 'tag': good_cells_id})
     scipy.io.savemat(f"./zz_data/microns_{session_info}_{scan_info}_activity.mat", {'activity': activity_extraction_extra_trc, 'tag': good_cells_id})
@@ -578,40 +593,70 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     bettiindex = True
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
-        select_which_connectome = False
+        select_which_connectome = True
+
         if select_which_connectome:
             W_row_betti_corr, W_col_betti_corr = W_goodneurons_row, W_goodneurons_col
             metadata["connectome_name"] = "good_connectome"
+
+            # tables that subject to plot for the soma
+            soma_data_dfs = [good_ct_all]
+            activity_helper.plot_soma_distribution(soma_data_dfs, 'microns_good2d.html' )
+
+
         else:
             connectome_by_activity_name_out = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_out.mat"
             W_row_betti = scipy.io.loadmat(connectome_by_activity_name_out)['connectome']
             # compare the overlap between the two connectomes
             neuron_conn_by_activity = scipy.io.loadmat(connectome_by_activity_name_out)['tag'].flatten()
-            neuron_overlap = len(np.intersect1d(neuron_conn_by_activity, good_ct_pt_rootids))
+            
+            # some subsampling criteria
+            subsample_list, subsample_celltype = [], []
+            subsample_index = True
+            if subsample_index:
+                for ni in range(len(neuron_conn_by_activity)):
+                    neuron_id = neuron_conn_by_activity[ni]
+                    selected_row = cell_table_old[cell_table_old['pt_root_id'] == neuron_id]
+                    assert selected_row.shape[0] == 1
+                    if selected_row["status_axon"].item() in ["extended", "clean"] and selected_row["full_dendrite"].item() == True:
+                        subsample_list.append(ni)
+                        subsample_celltype.append(selected_row["cell_type"].item())
+                        
+            subsampled_celltype = pd.Series(subsample_celltype).value_counts(normalize=True)
+            print(subsampled_celltype)
 
-            assert len(neuron_conn_by_activity) == neuron_overlap
+            neuron_overlap = len(np.intersect1d(neuron_conn_by_activity, goot_ct_axons_pt_rootids))
 
-            # W_row_betti_corr = np.corrcoef(W_row_betti, rowvar=True)
-            W_row_betti_corr = activity_helper.other_diss_matrix(W_row_betti)
+            print(len(neuron_conn_by_activity))
+            print(neuron_overlap)
+
+            W_row_betti_corr = np.corrcoef(W_row_betti, rowvar=True)
+            # W_row_betti_corr = activity_helper.other_diss_matrix(W_row_betti)
             print(W_row_betti_corr)
 
             connectome_by_activity_name_in = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
             W_col_betti = scipy.io.loadmat(connectome_by_activity_name_in)['connectome']
 
-            # W_col_betti_corr = np.corrcoef(W_col_betti, rowvar=True)
-            W_col_betti_corr = activity_helper.other_diss_matrix(W_col_betti)
+            W_col_betti_corr = np.corrcoef(W_col_betti, rowvar=True)
+            # W_col_betti_corr = activity_helper.other_diss_matrix(W_col_betti)
             print(W_col_betti_corr)
 
             metadata["connectome_name"] = "good_connectome_by_activity"
 
+            # sorting based on the pt_root_id (to make sure identical ordering)
             ptrootid_sorted_indices = np.argsort(neuron_conn_by_activity)
             neuron_conn_by_activity = neuron_conn_by_activity[ptrootid_sorted_indices]
             print(neuron_conn_by_activity[0:10])
             W_row_betti_corr = W_row_betti_corr[ptrootid_sorted_indices,:][:,ptrootid_sorted_indices]
             W_col_betti_corr = W_col_betti_corr[ptrootid_sorted_indices,:][:,ptrootid_sorted_indices]
 
-        print(W_row_betti.shape)
-        print(W_col_betti.shape)
+            # use subsampled neurons to cut down the connectome matrix
+            if len(subsample_list) != 0:
+                W_row_betti_corr = W_row_betti_corr[np.ix_(subsample_list, subsample_list)]
+                W_col_betti_corr = W_col_betti_corr[np.ix_(subsample_list, subsample_list)]
+
+        print(W_row_betti_corr.shape)
+        print(W_col_betti_corr.shape)
         
         data_lst = [activity_correlation_all_trc, out_sample_corr_trc, in_sample_corr_trc, W_row_betti_corr, W_col_betti_corr]
         names = ["activity", "connectome_out", "connectome_in", "goodneurons_row", "goodneurons_col"]
@@ -677,6 +722,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         else:
             print("Use All Data")
+            pendindex += "_forall"
             hyp_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
             hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}_microns__{pendindex}_embed_hypdist.mat"
             hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
@@ -685,13 +731,17 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             output_path = "./output-all"
 
         # load neuron tags
-        connectome_by_activity_name = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
+        # connectome_by_activity_name = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
+        connectome_by_activity_name = f"./zz_data/{pendindex}_connectome_in.mat"
+
         alltags = scipy.io.loadmat(connectome_by_activity_name)['tag']
         gt_in = scipy.io.loadmat(connectome_by_activity_name)['connectome']
         corr_gt_in = np.corrcoef(gt_in, rowvar=True)
         good_cells_id = np.array(good_cells_id).reshape(-1,1)
 
         cell_indices_thisscan = [np.where(alltags == value)[0][0] for value in good_cells_id]
+        print(cell_indices_thisscan)
+
         missing_values = [value for value in good_cells_id if not (alltags == value).any()]
         assert len(missing_values) == 0
 
@@ -706,10 +756,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         if not scan_specific:
             in_corr = in_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             out_corr = out_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-        
-        # # sanity check
-        # assert np.linalg.norm(out_corr - W_corrs_all_trc[1]) < 1e-5
-        # assert np.linalg.norm(in_corr - W_corrs_all_trc[0]) < 1e-5
 
         # **** Hyperbolic Output ****
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex]  
