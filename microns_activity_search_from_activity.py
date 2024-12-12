@@ -22,6 +22,7 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.signal import welch, coherence
 from scipy.stats import rankdata, linregress
 from sklearn.manifold import MDS
+from sklearn.cluster import AgglomerativeClustering, KMeans
 
 import scienceplots
 plt.style.use('science')
@@ -599,9 +600,40 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             W_row_betti_corr, W_col_betti_corr = W_goodneurons_row, W_goodneurons_col
             metadata["connectome_name"] = "good_connectome"
 
+            # analyze if the connectome is bi-modal or not
             # tables that subject to plot for the soma
             soma_data_dfs = [good_ct_all]
-            activity_helper.plot_soma_distribution(soma_data_dfs, 'microns_good2d.html' )
+            all_soma_positions = activity_helper.plot_soma_distribution(soma_data_dfs, f'microns_good2d_{pendindex}.html')
+            labels_by_soma = activity_helper.clustering_by_soma(all_soma_positions[0][:,0:2], f'microns_good2d_{pendindex}_soma.png').reshape(-1,1)
+
+            good_ct_all["region_mapped"] = good_ct_all["region"].map({"V1": 0, "RL": 1, "AL": 1})
+            labels_by_region = good_ct_all["region_mapped"].to_numpy().reshape(-1,1)
+
+            kmeans_corr = KMeans(n_clusters=2, random_state=42)
+            W_row_corr_cells, W_col_corr_cells = np.mean(W_row_betti_corr, axis=0).reshape(-1,1), np.mean(W_col_betti_corr, axis=0).reshape(-1,1)
+            labels_by_row = activity_helper.reverse_binary(kmeans_corr.fit_predict(W_row_corr_cells)).reshape(-1,1)
+            labels_by_col = activity_helper.reverse_binary(kmeans_corr.fit_predict(W_col_corr_cells)).reshape(-1,1)
+
+            combined_labels = np.hstack((labels_by_soma, labels_by_region, labels_by_row, labels_by_col))
+            combined_labels_tick = ["Soma", "Region", "Corr-Row", "Corr-Col"]
+
+            primary_group =  np.where(labels_by_soma == 0)[0].tolist()
+
+            figtest, axstest = plt.subplots(1,3,figsize=(4*3,4))
+            sns.heatmap(combined_labels, ax=axstest[0], cbar=False)
+            axstest[0].set_xticklabels(combined_labels_tick, rotation=45)
+            axstest[0].set_yticks([])
+            sns.heatmap(activity_helper.reorder_matrix(W_row_betti_corr, primary_group)[0], ax=axstest[1], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            axstest[1].set_title("Reordered Row Correlation")
+            sns.heatmap(activity_helper.reorder_matrix(W_col_betti_corr, primary_group)[0], ax=axstest[2], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            axstest[2].set_title("Reordered Column Correlation")
+            figtest.savefig(f"microns_good2d_{pendindex}_labels.png")
+
+            primary_group_selection = True
+            if primary_group_selection:
+                metadata["connectome_name"] += "_primary"
+                W_row_betti_corr = W_row_betti_corr[np.ix_(primary_group, primary_group)]
+                W_col_betti_corr = W_col_betti_corr[np.ix_(primary_group, primary_group)]
 
 
         else:

@@ -5,6 +5,7 @@ import gc
 import seaborn as sns
 import numpy as np 
 import matplotlib.pyplot as plt
+
 import scipy 
 from scipy.interpolate import CubicSpline
 from scipy.optimize import curve_fit
@@ -13,6 +14,7 @@ from scipy.sparse import csr_matrix
 from scipy.stats import pearsonr, entropy 
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mutual_info_score
+from sklearn.cluster import KMeans, DBSCAN
 
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
@@ -37,6 +39,50 @@ c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
+def reorder_matrix(matrix, priority_indices):
+    """
+    Reorders the rows and columns of a square matrix such that the 
+    rows and columns with indices in `priority_indices` come first.
+
+    Parameters:
+    - matrix (np.ndarray): A square (N x N) NumPy array.
+    - priority_indices (list or array-like): List of row/column indices to prioritize.
+
+    Returns:
+    - reordered_matrix (np.ndarray): The reordered square matrix.
+    - new_order (list): The new ordering of indices.
+    """
+    if not isinstance(matrix, np.ndarray):
+        raise TypeError("The matrix must be a NumPy ndarray.")
+    
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("The matrix must be a square (N x N) array.")
+    
+    N = matrix.shape[0]
+    
+    # Ensure priority_indices are unique and within the valid range
+    priority_indices = list(dict.fromkeys(priority_indices))  # Remove duplicates, preserve order
+    if any(idx < 0 or idx >= N for idx in priority_indices):
+        raise IndexError("All priority indices must be within the range [0, N-1].")
+    
+    # Determine the remaining indices
+    remaining_indices = [idx for idx in range(N) if idx not in priority_indices]
+    
+    # Combine to form the new order
+    new_order = priority_indices + remaining_indices
+    
+    # Reorder the matrix
+    reordered_matrix = matrix[np.ix_(new_order, new_order)]
+    
+    return reordered_matrix, new_order
+
+def reverse_binary(array):
+    """
+    """
+    if np.sum(array) > array.size / 2:
+        array = 1 - array
+    return array
+
 def plot_soma_distribution(soma_data_dfs, output_name):
     """
     given a list of dataframes (subject to different selection criteria), plot the soma distribution for each
@@ -48,6 +94,8 @@ def plot_soma_distribution(soma_data_dfs, output_name):
         ]
     )
 
+    all_soma_positions = []
+
     for sdf, soma_data_d in enumerate(soma_data_dfs):
         scale_factor = 1 / 1000
         good_ct_all_soma_x = soma_data_d["pt_position_x_trafo"].to_numpy() * scale_factor
@@ -55,6 +103,8 @@ def plot_soma_distribution(soma_data_dfs, output_name):
         good_ct_all_soma_z = soma_data_d["pt_position_z_trafo"].to_numpy() * scale_factor
 
         soma_position = np.array([good_ct_all_soma_x, good_ct_all_soma_y, good_ct_all_soma_z]).T
+        soma_position[:,[1,2]] = soma_position[:,[2,1]]
+        all_soma_positions.append(soma_position)
 
         trace = go.Scatter3d(
             x=soma_position[:, 0],
@@ -87,6 +137,30 @@ def plot_soma_distribution(soma_data_dfs, output_name):
 
     fig.write_html(output_name)
 
+    return all_soma_positions
+
+def clustering_by_soma(soma_positions, output_name):
+    """
+    """
+    k = 2  
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    labels = kmeans.fit_predict(soma_positions)
+
+    fig, ax = plt.subplots(figsize=(4,4))
+    for i in range(k):
+        cluster_points = soma_positions[labels == i]
+        plt.scatter(cluster_points[:, 0], cluster_points[:, 1], label=f'Cluster {i+1}')
+
+    centroids = kmeans.cluster_centers_
+    plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='x', s=200, label='Centroids')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_aspect('equal', 'box')
+    fig.legend()
+    fig.tight_layout()
+    fig.savefig(output_name)
+
+    return labels
 
 def scaling_help(A):
     B = A.max() - A
