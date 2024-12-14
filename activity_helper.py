@@ -237,7 +237,7 @@ def variation_of_information_matrix(matrix):
     N = matrix.shape[0]
     return np.array([[variation_of_information(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
 
-def other_diss_matrix(matrix):
+def other_diss_matrix(matrix, metric_name):
     """
     Use different dissimilarity metrics to compute the distance matrix.
     """
@@ -264,7 +264,12 @@ def other_diss_matrix(matrix):
         uv = np.dot(u, v)
         return 1 - (uv / (np.dot(u, u) + np.dot(v, v) - uv))
 
-    diss_func = jaccard
+    if metric_name == "czekanowski":
+        diss_func = czekanowski
+    elif metric_name == "dice":
+        diss_func = dice
+    elif metric_name == "jaccard":
+        diss_func = jaccard
     
     return 1 - np.array([[diss_func(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
 
@@ -660,7 +665,7 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
         for ax in axsgood.flatten():
             ax.legend()
         figgood.tight_layout()
-        figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}.png")
+        figgood.savefig(f"./zz_pyclique_results/gt_connectome_noise{noise}_minRatio_{minRatio}_whether_{metadata['whethernoise']}_cc_{metadata['whetherconnectome']}_neg{metadata['inhindex']}_conn{metadata['connectome_name']}.png")
         print("done")
 
         sys.exit()

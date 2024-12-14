@@ -63,8 +63,8 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
-    for_construction = True
-    for_parallel = False
+    for_construction = False
+    for_parallel = True
 
     job_num = -1 if for_parallel else 1 
 
@@ -78,7 +78,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     gc.collect()
 
     if not for_construction:
-        # generate combined dataset
+        # generate dataset for the connectome information combining neurons from different scans/sessions
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "in", scan_specific)
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "out", scan_specific)
 
@@ -115,7 +115,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
     cell_table_old = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_240603.feather")
 
-    cell_table = cell_table_old
+    cell_table = cell_table_new
 
     if whethernoise == "normal":
         matching_axon = cell_table[(cell_table["status_axon"].isin(["extended", "clean"])) & 
@@ -178,16 +178,18 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     # only do plot once
     old_good_ct = copy.deepcopy(good_ct)
-    if [session_info, scan_info] == [4,7]:
+    if [session_info, scan_info] == [8,5]:
+        select_frame = good_ct_all
+        print(len(select_frame))
         # delete small group 
-        good_ct = good_ct.loc[good_ct['layer'] != 'L1']
-        good_ct.sort_values(by='layer', inplace=True)
-        cell_type_goodct = good_ct["layer"].tolist()
+        select_frame = select_frame.loc[select_frame['layer'] != 'L1']
+        select_frame.sort_values(by='layer', inplace=True)
+        cell_type_goodct = select_frame["layer"].tolist()
 
         breakpoints_all = np.array([[i, cell_type_goodct[i-1]] for i in range(1, len(cell_type_goodct)) if cell_type_goodct[i] != cell_type_goodct[i - 1]])
         breakpoints, breakpoints_names = breakpoints_all[:, 0].astype(int).tolist(), list(breakpoints_all[:,1])
         breakpoints_names.append(cell_type_goodct[-1])
-        good_ct_connection, _, _, _ = helper.create_connectivity_as_whole(good_ct, synapse_table)
+        good_ct_connection, _, _, _ = helper.create_connectivity_as_whole(select_frame, synapse_table)
         figgoodct, axsgoodct = plt.subplots(figsize=(4,4))
         sns.heatmap(good_ct_connection, square=True, ax=axsgoodct, cbar=False)
         axsgoodct.set_xticks(breakpoints)
@@ -201,8 +203,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsgoodct.set_xticklabels(breakpoints_names, rotation=45)
         axsgoodct.set_yticks(breakpoints)
         axsgoodct.set_yticklabels(breakpoints_names, rotation=45)
+        
         figgoodct.tight_layout()
         figgoodct.savefig(f"./all_good_connections.png")
+        print("done")
 
     save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
     session_ds = xr.open_dataset(save_filename)
@@ -339,6 +343,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     if [session_info, scan_info] == [8,5]:
         tsne_layers = old_good_ct["layer"].tolist()
         tsne_celltype = old_good_ct["cell_type"].tolist()
+
         scipy.io.savemat(f"tsne_data/microns_goodconnectome.mat", {'W_goodneurons_in': W_goodneurons_col_info, 'W_goodneurons_out': W_goodneurons_row_info})
         scipy.io.savemat(f"tsne_data/microns_goodconnectome_cell_type.mat", {'tsne_layers': tsne_layers, 'tsne_celltype': tsne_celltype})
 
@@ -591,7 +596,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = True
+    bettiindex = False
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
         select_which_connectome = True
