@@ -63,7 +63,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
-    for_construction = True
+    for_construction = False
     for_parallel = False
 
     job_num = -1 if for_parallel else 1 
@@ -353,10 +353,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_out.mat", {'connectome': W_goodneurons_row_info, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
     scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_in.mat", {'connectome': W_goodneurons_col_info.T, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
 
-    W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
+    # W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
+    W_goodneurons_row = activity_helper.other_diss_matrix(W_goodneurons_row_info, "dice")
     W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
 
-    W_goodneurons_col = np.corrcoef(W_goodneurons_col_info, rowvar=False)
+    # W_goodneurons_col = np.corrcoef(W_goodneurons_col_info, rowvar=False)
+    W_goodneurons_col = activity_helper.other_diss_matrix(W_goodneurons_col_info, "dice")
     W_goodneurons_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
@@ -533,6 +535,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     for matrix in activity_correlation_per_section:
         np.fill_diagonal(matrix, 0)
 
+    # delete "detached" neurons from the activity correlation matrix 
     activity_correlation_all_trc = np.delete(activity_correlation_all, neurons_tobe_deleted, axis=0)  # Delete rows
     activity_correlation_all_trc = np.delete(activity_correlation_all_trc, neurons_tobe_deleted, axis=1)
     np.fill_diagonal(activity_correlation_all_trc, 0)
@@ -597,7 +600,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = True
+    bettiindex = False
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
         select_which_connectome = True
@@ -635,11 +638,18 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axstest[2].set_title("Reordered Input Correlation")
             figtest.savefig(f"microns_good2d_{pendindex}_labels.png")
 
-            primary_group_selection = True
-            if primary_group_selection:
+            primary_group_selection = True # True/False/"all"
+            if primary_group_selection == "all":
+                pass
+            elif primary_group_selection:
                 metadata["connectome_name"] += "_primary"
                 W_row_betti_corr = W_row_betti_corr[np.ix_(primary_group, primary_group)]
                 W_col_betti_corr = W_col_betti_corr[np.ix_(primary_group, primary_group)]
+            else:
+                metadata["connectome_name"] += "_secondary"
+                secondary_group = np.where(labels_by_soma == 1)[0].tolist()
+                W_row_betti_corr = W_row_betti_corr[np.ix_(secondary_group, secondary_group)]
+                W_col_betti_corr = W_col_betti_corr[np.ix_(secondary_group, secondary_group)]
 
 
         else:

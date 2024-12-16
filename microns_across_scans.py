@@ -130,7 +130,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
             xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
             activity_base = alldata[i][:,3].flatten()
 
-            ppt = activity_base
+            ppt = toactratio
 
             slope, intercept, r_value, p_value, std_err = stats.linregress(xx, ppt)
             print(f"p_value: {p_value}")
@@ -147,6 +147,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
             elif kk == 0:
                 axs[i].set_xlabel(f"Number of Neurons")
             axs[i].set_ylabel(f"{allmarks[i]} Explain Ratio" if not showactivity else f"{allmarks[i]} Correlation")
+            # axs[i].set_ylabel(f"Activity Correlation")
             axs[i].legend()
 
             hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,8].flatten()

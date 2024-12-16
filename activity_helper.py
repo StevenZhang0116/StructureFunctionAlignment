@@ -239,41 +239,56 @@ def variation_of_information_matrix(matrix):
     N = matrix.shape[0]
     return np.array([[variation_of_information(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
 
+
 def other_diss_matrix(matrix, metric_name):
     """
-    Use different dissimilarity metrics to compute the distance matrix.
+    Use different dissimilarity metrics to compute the distance matrix efficiently.
     """
-    N = matrix.shape[0]
+    if matrix.shape[0] > matrix.shape[1]: 
+        matrix = matrix.T
+        print("Transposed matrix for computation")
 
-    def czekanowski(u, v):
-        """
-        Czekanowski distance.
-        """
-        return np.sum(np.abs(u - v)) / np.sum(u + v)
-
-
-    def dice(u, v):
-        """
-        Dice dissimilarity.
-        """
-        u_v = u - v
-        return np.dot(u_v, u_v) / (np.dot(u, u) + np.dot(v, v))
-
-    def jaccard(u, v):
-        """
-        Jaccard distance.
-        """
-        uv = np.dot(u, v)
-        return 1 - (uv / (np.dot(u, u) + np.dot(v, v) - uv))
+    N, M = matrix.shape[0], matrix.shape[1]
 
     if metric_name == "czekanowski":
+        def czekanowski(matrix):
+            """
+            Vectorized Czekanowski distance.
+            """
+            abs_diff = np.abs(matrix[:, None, :] - matrix[None, :, :])  # Pairwise absolute differences
+            sums = matrix[:, None, :] + matrix[None, :, :]  # Pairwise sums
+            return np.sum(abs_diff, axis=2) / np.sum(sums, axis=2)
+
         diss_func = czekanowski
+
     elif metric_name == "dice":
+        def dice(matrix):
+            """
+            Vectorized Dice dissimilarity.
+            """
+            norm = np.sum(matrix**2, axis=1)  # Squared norms of rows
+            diff_sq = np.sum((matrix[:, None, :] - matrix[None, :, :])**2, axis=2)
+            return diff_sq / (norm[:, None] + norm[None, :])
+
         diss_func = dice
+
     elif metric_name == "jaccard":
+        def jaccard(matrix):
+            """
+            Vectorized Jaccard distance.
+            """
+            dot_product = np.dot(matrix, matrix.T)
+            norm = np.sum(matrix**2, axis=1)
+            union = norm[:, None] + norm[None, :] - dot_product
+            return 1 - dot_product / union
+
         diss_func = jaccard
-    
-    return 1 - np.array([[diss_func(matrix[i], matrix[j]) for j in range(N)] for i in range(N)])
+
+    else:
+        raise ValueError(f"Unsupported metric_name: {metric_name}")
+
+    return 1 - diss_func(matrix)
+
 
 def standard_metric(matrix, name):
     """
@@ -658,8 +673,10 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     names = ["Eul", "Hyp"]
     
     if doconnectome:
-        repeat = 10
         NneuronWselect = max(NneuronWrow, NneuronWcol)
+        if NneuronWselect > 300:
+            repeat = 10
+        
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]
 
         calculate_betti_for_connectome(axsgood, readin_W_hypfiles, groundtruth_bettis[3:], groundtruth_integratedbettis[3:], repeat, dd, noise, minRatio, metadata)
