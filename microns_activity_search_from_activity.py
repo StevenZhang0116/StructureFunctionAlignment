@@ -63,8 +63,8 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
-    for_construction = False
-    for_parallel = True
+    for_construction = True
+    for_parallel = False
 
     job_num = -1 if for_parallel else 1 
 
@@ -551,9 +551,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(activity_extraction_extra_trc.shape)
     print(activity_correlation_all_trc.shape)
 
+    # plot Euclidean MDS embedding for the activity correlation in one specific scan
+    # for illustration purpose of checking uniformity
     nmds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42)
     eul_activity_embedding = nmds.fit_transform(1 - activity_correlation_all_trc)
-
     fig_actembed, axs_actembed = plt.subplots(1,1,figsize=(4,4))
     hb1 = axs_actembed.hexbin(eul_activity_embedding[:, 0], eul_activity_embedding[:, 1], gridsize=50, cmap='viridis')
     axs_actembed.set_title("Input Embedding")
@@ -596,7 +597,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = False
+    bettiindex = True
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
         select_which_connectome = True
@@ -609,7 +610,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             # tables that subject to plot for the soma
             soma_data_dfs = [good_ct_all]
             all_soma_positions = activity_helper.plot_soma_distribution(soma_data_dfs, f'microns_good2d_{pendindex}.html')
-            labels_by_soma = activity_helper.clustering_by_soma(all_soma_positions[0][:,0:2], f'microns_good2d_{pendindex}_soma.png').reshape(-1,1)
+            labels_by_soma = activity_helper.clustering_by_soma(all_soma_positions[0][:,0:2], f'microns_good2d_{pendindex}_soma.png', ["V1", "Others"]).reshape(-1,1)
 
             good_ct_all["region_mapped"] = good_ct_all["region"].map({"V1": 0, "RL": 1, "AL": 1})
             labels_by_region = good_ct_all["region_mapped"].to_numpy().reshape(-1,1)
@@ -629,9 +630,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axstest[0].set_xticklabels(combined_labels_tick, rotation=45)
             axstest[0].set_yticks([])
             sns.heatmap(activity_helper.reorder_matrix(W_row_betti_corr, primary_group)[0], ax=axstest[1], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
-            axstest[1].set_title("Reordered Row Correlation")
+            axstest[1].set_title("Reordered Output Correlation")
             sns.heatmap(activity_helper.reorder_matrix(W_col_betti_corr, primary_group)[0], ax=axstest[2], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
-            axstest[2].set_title("Reordered Column Correlation")
+            axstest[2].set_title("Reordered Input Correlation")
             figtest.savefig(f"microns_good2d_{pendindex}_labels.png")
 
             primary_group_selection = True
@@ -759,7 +760,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         else:
             print("Use All Data")
-            pendindex += "_forall"
+            
+            # use proofread connectome embedding as a whole
+            # should be used as a control (= 0) in main text
+            downsample_from_conneectome = 0
+            if downsample_from_conneectome:
+                pendindex += "_forall"
             hyp_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
             hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}_microns__{pendindex}_embed_hypdist.mat"
             hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
@@ -770,8 +776,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # load neuron tags
         # connectome_by_activity_name = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
         connectome_by_activity_name = f"./zz_data/{pendindex}_connectome_in.mat"
+        print(connectome_by_activity_name)
 
         alltags = scipy.io.loadmat(connectome_by_activity_name)['tag']
+        print(len(alltags))
         gt_in = scipy.io.loadmat(connectome_by_activity_name)['connectome']
         corr_gt_in = np.corrcoef(gt_in, rowvar=True)
         good_cells_id = np.array(good_cells_id).reshape(-1,1)

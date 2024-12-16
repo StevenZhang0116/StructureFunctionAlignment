@@ -139,24 +139,26 @@ def plot_soma_distribution(soma_data_dfs, output_name):
 
     return all_soma_positions
 
-def clustering_by_soma(soma_positions, output_name):
+def clustering_by_soma(soma_positions, output_name, givenlabels=None):
     """
     """
     k = 2  
+    if givenlabels == None:
+        givenlabels = [f"Cluster {i+1}" for i in range(k)]
     kmeans = KMeans(n_clusters=k, random_state=42)
     labels = kmeans.fit_predict(soma_positions)
 
     fig, ax = plt.subplots(figsize=(4,4))
     for i in range(k):
         cluster_points = soma_positions[labels == i]
-        plt.scatter(cluster_points[:, 0], cluster_points[:, 1], label=f'Cluster {i+1}')
+        plt.scatter(cluster_points[:, 0], cluster_points[:, 1], label=givenlabels[i], alpha=0.2)
 
     centroids = kmeans.cluster_centers_
-    plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='x', s=200, label='Centroids')
+    plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='x', s=50, label='Centroids')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_aspect('equal', 'box')
-    fig.legend()
+    ax.legend()
     fig.tight_layout()
     fig.savefig(output_name)
 

@@ -23,14 +23,15 @@ def connectome():
     fig, axs = plt.subplots(1,3,figsize=(4*3,4*1))
 
     subdatas = ["whether_noise_cc_binary", "whether_noise_cc_count"]
+    append = "_conngood_connectome_primary"
     linestyles = [["-","--"], ["-.", ":"]]
     for iii in range(len(subdatas)):
         subdata = subdatas[iii]
         groundtruth = f"./zz_pyclique_results/{subdata}"
         fitting = f"{groundtruth}_fitting"
-        groundtruth = np.load(groundtruth+".npz")["groundtruth_integratedbetti_save"][3:,:]
+        groundtruth = np.load(groundtruth+append+".npz")["groundtruth_integratedbetti_save"][3:,:]
 
-        rmax_best = [[17,15], [15,13]]
+        rmax_best = [[18,14], [14,13]]
 
         fitting = np.load(fitting+".npz")["fake_integrated_bettis"]
 
@@ -50,7 +51,9 @@ def connectome():
         fields = sorted(fields, key=lambda x: int(x.split('_')[1]))
         fields = np.array([float(f[5:]) for f in fields])
 
-    
+        max_value_betti = [20,50,70]
+        min_value_betti = [-0.5,-2,-2]
+
         for i in range(3):
             axs[i].plot(list(fields), list(average_fakebetti[:,i]), "-o", color=c_vals[i])
             axs[i].fill_between(list(fields), list(average_fakebetti[:,i]-std_fakebetti[:,i]), list(average_fakebetti[:,i]+std_fakebetti[:,i]), color=c_vals_l[i], alpha=0.2)
@@ -63,6 +66,7 @@ def connectome():
             axs[i].scatter(rmax_best[iii][1], groundtruth[1,i], color=c_vals_l[i], marker='o')
             axs[i].set_xlabel("Rmax")
             axs[i].set_ylabel(f"Betti {i+1} Value")
+            axs[i].set_ylim([min_value_betti[i], max_value_betti[i]])
 
     fig.tight_layout()
     fig.savefig(f"./zz_pyclique_results/connectome_fakebetti.png")
@@ -145,5 +149,5 @@ def activity_all():
 
 if __name__ == "__main__":
     # activity()
-    # connectome()
-    activity_all()
+    connectome()
+    # activity_all()

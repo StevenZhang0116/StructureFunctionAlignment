@@ -5,11 +5,11 @@ from microns_across_scans import *
 from microns_parameter_search import *
 
 if __name__ == "__main__":
-    R_max_lst = ["1"]
+    R_max_lst = ["1", "8.000000e-01", "1.200000e+00", "1.400000e+00", "1.600000e+00", "1.800000e+00"]
     D = 2
     # R_max_lst = ["6.000000e-01"]
     # D = 3
-    ww = "normal"
+    ww = "noise"
     cc = "count"
     ss = "all"
     # for connectome data, coming from scan_specific is True
@@ -21,3 +21,4 @@ if __name__ == "__main__":
         microns_across_scans(R_max, D, 5, ww, cc, ss, scan_specific)
     
     # microns_parameter_search(D, 0, ww, cc)
+ 
