@@ -39,42 +39,6 @@ c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
-def reorder_matrix(matrix, priority_indices):
-    """
-    Reorders the rows and columns of a square matrix such that the 
-    rows and columns with indices in `priority_indices` come first.
-
-    Parameters:
-    - matrix (np.ndarray): A square (N x N) NumPy array.
-    - priority_indices (list or array-like): List of row/column indices to prioritize.
-
-    Returns:
-    - reordered_matrix (np.ndarray): The reordered square matrix.
-    - new_order (list): The new ordering of indices.
-    """
-    if not isinstance(matrix, np.ndarray):
-        raise TypeError("The matrix must be a NumPy ndarray.")
-    
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("The matrix must be a square (N x N) array.")
-    
-    N = matrix.shape[0]
-    
-    # Ensure priority_indices are unique and within the valid range
-    priority_indices = list(dict.fromkeys(priority_indices))  # Remove duplicates, preserve order
-    if any(idx < 0 or idx >= N for idx in priority_indices):
-        raise IndexError("All priority indices must be within the range [0, N-1].")
-    
-    # Determine the remaining indices
-    remaining_indices = [idx for idx in range(N) if idx not in priority_indices]
-    
-    # Combine to form the new order
-    new_order = priority_indices + remaining_indices
-    
-    # Reorder the matrix
-    reordered_matrix = matrix[np.ix_(new_order, new_order)]
-    
-    return reordered_matrix, new_order
 
 def reverse_binary(array):
     """
@@ -674,7 +638,8 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     
     if doconnectome:
         NneuronWselect = max(NneuronWrow, NneuronWcol)
-        if NneuronWselect > 300:
+        # synthetic data will have fewer repeats if N is too large
+        if NneuronWselect > 100:
             repeat = 10
         
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]

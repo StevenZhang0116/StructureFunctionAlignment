@@ -63,7 +63,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
-    for_construction = False
+    for_construction = True
     for_parallel = False
 
     job_num = -1 if for_parallel else 1 
@@ -353,12 +353,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_out.mat", {'connectome': W_goodneurons_row_info, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
     scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_in.mat", {'connectome': W_goodneurons_col_info.T, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
 
-    # W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
-    W_goodneurons_row = activity_helper.other_diss_matrix(W_goodneurons_row_info, "dice")
+    W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
+    # W_goodneurons_row = activity_helper.other_diss_matrix(W_goodneurons_row_info, "dice")
     W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
 
-    # W_goodneurons_col = np.corrcoef(W_goodneurons_col_info, rowvar=False)
-    W_goodneurons_col = activity_helper.other_diss_matrix(W_goodneurons_col_info, "dice")
+    W_goodneurons_col = np.corrcoef(W_goodneurons_col_info, rowvar=False)
+    # W_goodneurons_col = activity_helper.other_diss_matrix(W_goodneurons_col_info, "dice")
     W_goodneurons_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
@@ -600,10 +600,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = False
+    bettiindex = True
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
-        select_which_connectome = True
+        select_which_connectome = False
 
         if select_which_connectome:
             W_row_betti_corr, W_col_betti_corr = W_goodneurons_row, W_goodneurons_col
@@ -611,6 +611,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
             # analyze if the connectome is bi-modal or not
             # tables that subject to plot for the soma
+            # simple classification of neurons based on brain region
             soma_data_dfs = [good_ct_all]
             all_soma_positions = activity_helper.plot_soma_distribution(soma_data_dfs, f'microns_good2d_{pendindex}.html')
             labels_by_soma = activity_helper.clustering_by_soma(all_soma_positions[0][:,0:2], f'microns_good2d_{pendindex}_soma.png', ["V1", "Others"]).reshape(-1,1)
@@ -627,30 +628,58 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             combined_labels_tick = ["Soma", "Region", "Corr-Row", "Corr-Col"]
 
             primary_group =  np.where(labels_by_soma == 0)[0].tolist()
+            secondary_group = np.where(labels_by_soma == 1)[0].tolist()
+            overall_group = primary_group + secondary_group
 
             figtest, axstest = plt.subplots(1,3,figsize=(4*3,4))
             sns.heatmap(combined_labels, ax=axstest[0], cbar=False)
             axstest[0].set_xticklabels(combined_labels_tick, rotation=45)
             axstest[0].set_yticks([])
-            sns.heatmap(activity_helper.reorder_matrix(W_row_betti_corr, primary_group)[0], ax=axstest[1], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            sns.heatmap(W_row_betti_corr[np.ix_(overall_group, overall_group)], ax=axstest[1], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
             axstest[1].set_title("Reordered Output Correlation")
-            sns.heatmap(activity_helper.reorder_matrix(W_col_betti_corr, primary_group)[0], ax=axstest[2], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            sns.heatmap(W_col_betti_corr[np.ix_(overall_group, overall_group)], ax=axstest[2], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
             axstest[2].set_title("Reordered Input Correlation")
             figtest.savefig(f"microns_good2d_{pendindex}_labels.png")
 
-            primary_group_selection = True # True/False/"all"
+            # what if only select a subpopulation of neurons
+            good_ct_all_type_counts = good_ct_all["cell_type"].value_counts(normalize=True)
+            cell_type_name = "4P"
+            all_cell_types = ["23P", "4P", "5P-IT", "5P-ET", "6P-IT", "6P-CT"]
+            ssneurons = good_ct_all["cell_type"] == cell_type_name
+            ssneurons_indices = np.where(ssneurons)[0].tolist()
+
+            # 
+            neuron_order_by_type = []
+            for cell_type in all_cell_types:
+                ssneurons = good_ct_all["cell_type"] == cell_type
+                this_indices = np.where(ssneurons)[0].tolist()
+                neuron_order_by_type.extend(this_indices)
+
+            figtesttype, axstesttype = plt.subplots(1,3,figsize=(4*3,4))
+            axstesttype[0].bar(good_ct_all_type_counts.index, good_ct_all_type_counts.values)
+            axstesttype[0].tick_params(axis='x', rotation=45)
+            sns.heatmap(W_row_betti_corr[np.ix_(neuron_order_by_type, neuron_order_by_type)], ax=axstesttype[1], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            axstesttype[1].set_title("Reordered Output Correlation")
+            sns.heatmap(W_col_betti_corr[np.ix_(neuron_order_by_type, neuron_order_by_type)], ax=axstesttype[2], cbar=True, square=True, center=0, cmap="coolwarm", vmin=0, vmax=1)
+            axstesttype[2].set_title("Reordered Input Correlation")
+            figtesttype.savefig(f"microns_good2d_{pendindex}_cell_type.png")
+            
+
+            primary_group_selection = "4P" # True/False/"all"/"4P"
             if primary_group_selection == "all":
                 pass
-            elif primary_group_selection:
+            elif primary_group_selection in all_cell_types:
+                metadata["connectome_name"] += f"_{cell_type_name}"
+                W_row_betti_corr = W_row_betti_corr[np.ix_(ssneurons_indices, ssneurons_indices)]
+                W_col_betti_corr = W_col_betti_corr[np.ix_(ssneurons_indices, ssneurons_indices)]
+            elif primary_group_selection is True:
                 metadata["connectome_name"] += "_primary"
                 W_row_betti_corr = W_row_betti_corr[np.ix_(primary_group, primary_group)]
                 W_col_betti_corr = W_col_betti_corr[np.ix_(primary_group, primary_group)]
             else:
                 metadata["connectome_name"] += "_secondary"
-                secondary_group = np.where(labels_by_soma == 1)[0].tolist()
                 W_row_betti_corr = W_row_betti_corr[np.ix_(secondary_group, secondary_group)]
                 W_col_betti_corr = W_col_betti_corr[np.ix_(secondary_group, secondary_group)]
-
 
         else:
             connectome_by_activity_name_out = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_out.mat"
@@ -669,26 +698,19 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                     if selected_row["status_axon"].item() in ["extended", "clean"] and selected_row["full_dendrite"].item() == True:
                         subsample_list.append(ni)
                         subsample_celltype.append(selected_row["cell_type"].item())
-                        
-            subsampled_celltype = pd.Series(subsample_celltype).value_counts(normalize=True)
-            print(subsampled_celltype)
+                    
 
             neuron_overlap = len(np.intersect1d(neuron_conn_by_activity, goot_ct_axons_pt_rootids))
 
-            print(len(neuron_conn_by_activity))
-            print(neuron_overlap)
-
             W_row_betti_corr = np.corrcoef(W_row_betti, rowvar=True)
-            # W_row_betti_corr = activity_helper.other_diss_matrix(W_row_betti)
-            print(W_row_betti_corr)
-
             connectome_by_activity_name_in = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
+            connectome_by_activity_name_out = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_out.mat"
+
             W_col_betti = scipy.io.loadmat(connectome_by_activity_name_in)['connectome']
-
             W_col_betti_corr = np.corrcoef(W_col_betti, rowvar=True)
-            # W_col_betti_corr = activity_helper.other_diss_matrix(W_col_betti)
-            print(W_col_betti_corr)
-
+            W_row_betti = scipy.io.loadmat(connectome_by_activity_name_out)['connectome']
+            W_row_betti_corr = np.corrcoef(W_row_betti, rowvar=True)
+            
             metadata["connectome_name"] = "good_connectome_by_activity"
 
             # sorting based on the pt_root_id (to make sure identical ordering)

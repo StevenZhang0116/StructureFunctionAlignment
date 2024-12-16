@@ -12,7 +12,7 @@ if __name__ == "__main__":
     # D = 3
     ww = "normal"
     cc = "count"
-    ss = "inhibitory_neuron"
+    ss = "all"
     # for connectome data, coming from scan_specific is True
     # for activity data, coming from scan_specific is False
     scan_specific = False

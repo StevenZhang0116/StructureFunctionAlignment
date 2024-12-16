@@ -171,6 +171,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, whethernoise, whethercon
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, toactratio])
                         print(activity_helper.stats_test(data[0], data[2]))
+                        print(np.median(data[0]))
                         data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
                         print(activity_helper.stats_test(data_session[0], data_session[2]))
 
