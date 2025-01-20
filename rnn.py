@@ -12,6 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import seaborn as sns
 
+import activity_helper
+
 class CTRNN(nn.Module):
     """Continuous-time RNN.
 
@@ -38,6 +40,7 @@ class CTRNN(nn.Module):
 
         self.input2h = nn.Linear(input_size, hidden_size, bias=False)
         self.h2h = nn.Linear(hidden_size, hidden_size, bias=False)
+        # nn.init.xavier_uniform_(self.h2h.weight)
 
     def init_hidden(self, input_shape):
         batch_size = input_shape[1]
@@ -46,8 +49,7 @@ class CTRNN(nn.Module):
     def recurrence(self, input, hidden):
         """Recurrence helper."""
         pre_activation = self.input2h(input) + self.h2h(hidden) 
-        h_new = torch.relu(hidden * self.oneminusalpha +
-                           pre_activation * self.alpha)
+        h_new = torch.relu(hidden * self.oneminusalpha + pre_activation * self.alpha)
         return h_new.to(input.device)
 
     def forward(self, input, hidden=None):
@@ -89,15 +91,19 @@ class CTRNN_Net(nn.Module):
 
 for i in range(50):
 
-    input_size = 5     
-    hidden_size = 60   
-    output_size = 3    
+    input_size = 2     
+    hidden_size = 100   
+    output_size = 2    
     sequence_length = 30000
 
-    rnn = CTRNN_Net(input_size, hidden_size, output_size)
+    rnn = CTRNN_Net(input_size, hidden_size, output_size, Tau=1, dt=1)
 
     batch_size = 1  
-    random_input = torch.randn(batch_size, sequence_length, input_size)
+    # random_input = torch.randn(batch_size, sequence_length, input_size)
+
+    scale = 1
+    random_input = scale * torch.randn(batch_size, sequence_length, input_size)
+
 
     output, hidden_states = rnn(random_input)
 
@@ -112,3 +118,32 @@ for i in range(50):
     scipy.io.savemat(f"zz_data_rnn/rnn_connectome_out_{i}.mat", {'connectome': rnn_weight})
     scipy.io.savemat(f"zz_data_rnn/rnn_connectome_in_{i}.mat", {'connectome': rnn_weight.T})
     scipy.io.savemat(f"zz_data_rnn/rnn_activity_{i}.mat", {'activity': hidden_states_np.T})
+
+    weight_corr_in = np.corrcoef(rnn_weight, rowvar=True)
+    weight_corr_out = np.corrcoef(rnn_weight.T, rowvar=True)
+    activity_corr = np.corrcoef(hidden_states_np.T, rowvar=True)
+
+    cov_matrix = np.cov(hidden_states_np, rowvar=False)
+    eigenvalues = np.linalg.eigvalsh(cov_matrix)
+    eigenvalues = eigenvalues[eigenvalues > 0]
+    participation_ratio = (np.sum(eigenvalues) ** 2) / np.sum(eigenvalues ** 2)
+    print(f"Participation ratio: {participation_ratio}")
+
+    dim_loader, angle_loader1, _, _ = activity_helper.angles_between_flats_wrap(weight_corr_in, activity_corr, angle_consideration=15)
+    dim_loader, angle_loader2, _, _ = activity_helper.angles_between_flats_wrap(weight_corr_out, activity_corr, angle_consideration=15)
+
+    fig, axs = plt.subplots(1,3, figsize=(4*3,4))
+    cnt = 0
+    for data in [weight_corr_in, weight_corr_out, activity_corr]:
+        axs[cnt].hist(data.flatten(), bins=100, alpha=0.5)
+        cnt+=1
+    plt.savefig(f"zz_data_rnn/hist_{i}.png")
+
+    weight_corr_in_flatten = weight_corr_in.flatten()
+    weight_corr_out_flatten = weight_corr_out.flatten()
+    activity_corr_flatten = activity_corr.flatten()
+
+    fig, axs = plt.subplots(1,2,figsize=(4*2,4))
+    axs[0].scatter(weight_corr_in_flatten, activity_corr_flatten, alpha=0.1)
+    axs[1].scatter(weight_corr_out_flatten, activity_corr_flatten, alpha=0.1)
+    fig.savefig(f"zz_data_rnn/scatter_{i}.png")

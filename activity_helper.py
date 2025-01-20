@@ -262,11 +262,54 @@ def standard_metric(matrix, name):
     elif name == "cosine":
         return metric.cosine_distance_matrix(matrix)
 
-def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permute=False):
+def bin_and_split_data(data, num_bins=100):
+    """
+    Bin data along the last dimension and split into training and testing sets.
+    
+    Parameters:
+        data (numpy.ndarray): Input data of shape (N, M).
+        num_bins (int): Number of bins to divide the M-dimension.
+    
+    Returns:
+        tuple: training_data (from odd bins), testing_data (from even bins).
+    """
+    reshape_index = False
+
+    if len(data.shape) == 1:
+        data = data.reshape(1, -1)
+        reshape_index = True
+
+    N, M = data.shape
+
+    # Generate bin edges and digitize data along the last dimension
+    bin_edges = np.linspace(0, M, num_bins + 1)
+    bin_indices = np.digitize(np.arange(M), bin_edges) - 1  # Bin indices (0-indexed)
+
+    # Separate odd and even bins
+    odd_bins = np.where(bin_indices % 2 == 1)[0]
+    even_bins = np.where(bin_indices % 2 == 0)[0]
+
+    # Concatenate data from odd and even bins
+    training_data = data[:, odd_bins]
+    testing_data = data[:, even_bins]
+
+    if reshape_index:
+        training_data = training_data.flatten()
+        testing_data = testing_data.flatten()
+
+    return training_data, testing_data
+
+def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permute=False, evenodd=False):
     """
     add option to only take top K components in reconstruction
     if K=None, then using all neurons (without any low-pass filter)
     """
+    if evenodd: # this must be activity correlation
+        training_data, testing_data = bin_and_split_data(activity_extraction_extra_trc)
+        W = np.corrcoef(training_data, rowvar=True)
+        np.fill_diagonal(W, 0) # zero-out diagonal
+    else:
+        testing_data = activity_extraction_extra_trc
 
     if isinstance(K, str):
         if K[0] == "r":
@@ -287,15 +330,9 @@ def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permu
     row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
 
     filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
-    
 
-    # # permute the matrix but still keep it symmetric
-    # if permute == "rowwise":
-    #     filtered_matrix_normalized = permute_symmetric_matrix(filtered_matrix_normalized)
-    # elif permute == "cellwise":
-    #     filtered_matrix_normalized = permute_symmetric_matrix_cellwise(filtered_matrix_normalized)
+    activity_reconstruct_a = filtered_matrix_normalized @ testing_data  
 
-    activity_reconstruct_a = filtered_matrix_normalized @ activity_extraction_extra_trc
     return activity_reconstruct_a, filtered_matrix_normalized
 
 def vectorized_pearsonr(x, y):
@@ -378,17 +415,14 @@ def remove_nan_inf_union(matrix):
 
     nan_inf_rows = np.all(np.isnan(matrix) | np.isinf(matrix), axis=1)
     nan_inf_columns = np.all(np.isnan(matrix) | np.isinf(matrix), axis=0)
-
     rows_to_remove = np.where(nan_inf_rows)[0]
     columns_to_remove = np.where(nan_inf_columns)[0]
-
     indices_to_remove = np.union1d(rows_to_remove, columns_to_remove)
-
     smaller_matrix = row_column_delete(matrix, indices_to_remove)
 
     print(f"After: {smaller_matrix.shape}")
 
-    return smaller_matrix
+    return smaller_matrix, indices_to_remove
 
 def cosine_similarity(arr1, arr2):
     """
@@ -399,6 +433,8 @@ def cosine_similarity(arr1, arr2):
     return dot_product / (norm_a * norm_b)
 
 def row_column_delete(activity_correlation, indices_to_delete):
+    """
+    """
     activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=0)
     activity_correlation = np.delete(activity_correlation, indices_to_delete, axis=1)
     return activity_correlation
@@ -509,6 +545,7 @@ def angles_between_flats_wrap(W_corr, activity_correlation, angle_consideration=
 
         U_comps_activity = [U_activity[:,i] for i in range(num_dimension)]
         U_comps_connectome = [U_connectome[:,i] for i in range(num_dimension)]
+
         angle_in_bewteen = angles_between_flats(U_comps_activity, U_comps_connectome)
 
         dim_loader.append(num_dimension)
@@ -639,7 +676,7 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     if doconnectome:
         NneuronWselect = max(NneuronWrow, NneuronWcol)
         # synthetic data will have fewer repeats if N is too large
-        if NneuronWselect > 100:
+        if NneuronWselect > 300:
             repeat = 10
         
         readin_W_hypfiles = [f"./zz_pyclique/hyperbolic_dis_n={NneuronWselect}_repeat={repeat}_dim_{dimension}noise_{noise}minRatio_{minRatio}.mat"]

@@ -53,7 +53,7 @@ plotstyles = [[c_vals[0], linestyles[0]], \
         ]
 
 
-def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific):
+def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome):
     """
     """
     # # all session and scan information
@@ -71,7 +71,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     param_results = Parallel(n_jobs=job_num)(
         delayed(run)(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
                     whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
-                    scan_specific=scan_specific)
+                    scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome)
         for ss in session_scan
     )
 
@@ -82,7 +82,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "in", scan_specific)
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "out", scan_specific)
 
-def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific):
+def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome):
     """
     By default, whethernoise == normal, whetherconnectome == count
     Others are considered as compartive/ablation study
@@ -99,9 +99,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     metadata["scan_info"] = scan_info
     metadata["whethernoise"] = whethernoise
     metadata["whetherconnectome"] = whetherconnectome
-
-    # index
-    sub_correlation_index = "nan_fill"
 
     # proofread & coregisteration overlap information
     prf_coreg = pd.read_csv("./microns/prf_coreg.csv")
@@ -168,7 +165,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     good_ct = good_ct[good_ct["classification_system"] == "excitatory_neuron"]
     # consider both axonal and dendritic restriction
     good_ct_all = good_ct[(good_ct["status_axon"].isin(["extended", "clean"])) & (good_ct["full_dendrite"] == True)]
-    print(good_ct_all["cell_type"].value_counts(normalize=True))
+    # fully proofread neurons pt_root_ids
     good_ct_all_pt_rootids = good_ct_all["pt_root_id"].to_numpy()
     # only consider the axonal restriction
     good_ct_axons = good_ct[good_ct["status_axon"].isin(["extended", "clean"])]
@@ -206,7 +203,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         
         figgoodct.tight_layout()
         figgoodct.savefig(f"./all_good_connections.png")
-        print("done")
 
     save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
     session_ds = xr.open_dataset(save_filename)
@@ -215,18 +211,22 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     fps_value = session_ds.attrs.get("fps", None)
 
-    selected_neurons = []
-    neuron_types = []
-    activity_extraction = []
-    activity_extraction_extra = []
+    selected_neurons, neuron_types, activity_extraction, activity_extraction_extra = [], [], [], []
+
+    # condition of whether only use structurally confident & functionally coregistered neurons in the activity reconstruction analysis
+    # by default = 0 to include more neurons
+
+    if downsample_from_connectome == 1:
+        sample_condition = lambda pt_root_id: pt_root_id in prf_coreg_ids and pt_root_id in good_ct_all_pt_rootids
+    else:
+        sample_condition = lambda pt_root_id: pt_root_id in prf_coreg_ids
 
     for index, pt_root_id in enumerate(cell_table["pt_root_id"]):
         # Dec 5th Update: only consider neurons that 1) functionally coregistered; 2) structurally confident (far more strict on axons than dendrites)
         # previously we don't have 2) in the consideration
         # Dec 10th Update: used as a control for supplement
 
-        # if pt_root_id in prf_coreg_ids and pt_root_id in good_ct_all_pt_rootids:
-        if pt_root_id in prf_coreg_ids:
+        if sample_condition(pt_root_id):
             cell_row = cell_table[cell_table["pt_root_id"] == pt_root_id]
             # only select neurons that are excitatory 
             if cell_row["classification_system"].item() in ["excitatory_neuron"]:
@@ -303,17 +303,19 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # calculate activity correlation
     metric_name = "correlation"
     metadata["metric_name"] = metric_name
-    # activity_correlation_all = np.corrcoef(activity_extraction_extra, rowvar=True)
     activity_correlation_all = activity_helper.standard_metric(activity_extraction_extra, metric_name)
     activity_cov_all = np.cov(activity_extraction_extra, rowvar=True)
     
     metadata["num_neurons"] = activity_extraction_extra.shape[0]
 
-    dd = np.triu_indices_from(activity_correlation_all, k=1)
-    upper_tri_values = activity_correlation_all[dd].flatten()
+    upp_dd = np.triu_indices_from(activity_correlation_all, k=1)
+    upper_tri_values = activity_correlation_all[upp_dd].flatten()
     gt_median_corr = np.median(upper_tri_values)
+    gt_mean_corr = np.mean(upper_tri_values)
 
     metadata["gt_median_corr"] = gt_median_corr
+    metadata["gt_mean_corr"] = gt_mean_corr
+    print(f"gt_median_corr: {gt_median_corr}; gt_mean_corr: {gt_mean_corr}")
 
     binary_count, psd_count, syn_count, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
 
@@ -350,18 +352,24 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     print(f"W_goodneurons_row_info: {W_goodneurons_row_info.shape}")
     print(f"W_goodneurons_col_info: {W_goodneurons_col_info.shape}")
 
-    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_out.mat", {'connectome': W_goodneurons_row_info, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
-    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_in.mat", {'connectome': W_goodneurons_col_info.T, 'tag': good_ct_all_pt_rootids.reshape(-1,1)})
-
     W_goodneurons_row = np.corrcoef(W_goodneurons_row_info, rowvar=True)
     # W_goodneurons_row = activity_helper.other_diss_matrix(W_goodneurons_row_info, "dice")
-    W_goodneurons_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
+    W_goodneurons_row, bad_row = activity_helper.remove_nan_inf_union(W_goodneurons_row)
 
     W_goodneurons_col = np.corrcoef(W_goodneurons_col_info, rowvar=False)
     # W_goodneurons_col = activity_helper.other_diss_matrix(W_goodneurons_col_info, "dice")
-    W_goodneurons_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
+    W_goodneurons_col, bad_col = activity_helper.remove_nan_inf_union(W_goodneurons_col)
 
     print(f"Original selected_neurons: {len(selected_neurons)}")
+
+    all_bad_row_col = activity_helper.merge_arrays([bad_row, bad_col])
+    want_row_col = [i for i in range(W_goodneurons_row_info.shape[0]) if i not in all_bad_row_col]
+    print(f"all_bad_row_col: {all_bad_row_col}")
+
+    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_out.mat", {'connectome': W_goodneurons_row_info[want_row_col, :], \
+                'tag': good_ct_all_pt_rootids.reshape(-1,1)[want_row_col]})
+    scipy.io.savemat(f"./zz_data/{pendindex}_forall_connectome_in.mat", {'connectome': W_goodneurons_col_info.T[want_row_col, :], \
+                'tag': good_ct_all_pt_rootids.reshape(-1,1)[want_row_col]})
 
     correlation_index_lst = ["column", "row"]
     correlation_name_lst = ["Input", "Output"]
@@ -378,25 +386,21 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         W_trc_connection_base = used_structure[np.ix_(selected_neurons,selected_neurons)]
 
-        external_data = True
-        if not external_data:
-            W_corr = np.corrcoef(W, rowvar=False if correlation_index=="column" else True) 
-        else:
-            # calculated correlation, matched to the data type of noise/glia/all/normal + count/binary/psd
-            if correlation_index == "row":
-                W_trc = used_structure[selected_neurons,:]
-                W_trc = W_trc[:,matching_dendrite]
-                W_corr = np.corrcoef(W_trc, rowvar=True)
-                W_cov = np.cov(W_trc, rowvar=True)
+        # calculated correlation, matched to the data type of noise/glia/all/normal + count/binary/psd
+        if correlation_index == "row":
+            W_trc = used_structure[selected_neurons,:]
+            W_trc = W_trc[:,matching_dendrite]
+            W_corr = np.corrcoef(W_trc, rowvar=True)
+            W_cov = np.cov(W_trc, rowvar=True)
 
-            else:
-                W_trc = used_structure[:,selected_neurons]
-                W_trc = W_trc[matching_axon,:]
-                W_corr = np.corrcoef(W_trc, rowvar=False)
-                W_cov = np.cov(W_trc, rowvar=False)
-            
-            W_backupcheck = used_structure[np.ix_(selected_neurons, selected_neurons)]
-            W_samples.append(W_trc)
+        else:
+            W_trc = used_structure[:,selected_neurons]
+            W_trc = W_trc[matching_axon,:]
+            W_corr = np.corrcoef(W_trc, rowvar=False)
+            W_cov = np.cov(W_trc, rowvar=False)
+        
+        W_backupcheck = used_structure[np.ix_(selected_neurons, selected_neurons)]
+        W_samples.append(W_trc)
 
         W_corr_all = W_corr
         W_corr, activity_correlation, indices_to_delete = activity_helper.sanity_check_W(W_corr_all, activity_correlation_all)
@@ -410,13 +414,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         shape_check = W_corr.shape[0]
         print(f"Shape after sanity check (nan/inf): {shape_check}")
 
-        if sub_correlation_index == "zero_out":
-            np.fill_diagonal(activity_correlation, 0)
-            np.fill_diagonal(W_corr, 0)
-
-        elif sub_correlation_index == "nan_fill":
-            np.fill_diagonal(activity_correlation, np.nan)
-            np.fill_diagonal(W_corr, np.nan)
+        np.fill_diagonal(activity_correlation, np.nan)
+        np.fill_diagonal(W_corr, np.nan)
         
         if correlation_index == "column":
             assert W_trc_connection_base.shape == activity_correlation_orig.shape
@@ -436,16 +435,13 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axcompare.set_title(f"p-value: {activity_helper.float_to_scientific(pp)}")
             axcompare.legend()
             figcompare.tight_layout()
-            figcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_Wcompare.png")
+            # figcompare.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_metric_{metric_name}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_Wcompare.png")
 
         relation_matrix = np.zeros((shape_check, shape_check))
         relation_matrix_compare = np.zeros((shape_check, shape_check))
         for i in range(shape_check):
             for j in range(shape_check):
-                if sub_correlation_index == "zero_out":
-                    correlation, _ = pearsonr(activity_correlation[i], W_corr[j])
-                elif sub_correlation_index == "nan_fill":
-                    correlation = activity_helper.pearson_correlation_with_nans(activity_correlation[i], W_corr[j])
+                correlation = activity_helper.pearson_correlation_with_nans(activity_correlation[i], W_corr[j])
 
                 # compartive study
                 correlation_compare, _ = pearsonr(activity_correlation_orig[i], W_trc_connection_base[j])
@@ -454,7 +450,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 relation_matrix_compare[i,j] = correlation_compare
 
         # remove all null information in the whole column/row
-        relation_matrix = activity_helper.remove_nan_inf_union(relation_matrix)
+        relation_matrix, _ = activity_helper.remove_nan_inf_union(relation_matrix)
         change_indices = np.argwhere(np.isnan(relation_matrix) | np.isinf(relation_matrix))
         relation_matrix[change_indices[:, 0], change_indices[:, 1]] = 0
         print(f"change_indices: {change_indices}")
@@ -462,9 +458,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         sns.heatmap(relation_matrix, ax=axs[corrind,0], cbar=True, square=True, center=0, cmap="coolwarm", vmin=np.min(relation_matrix), vmax=np.max(relation_matrix))
         sns.heatmap(activity_correlation, ax=axs[corrind,1], cbar=True, square=True)
         sns.heatmap(W_corr, ax=axs[corrind,2], cbar=True, square=True, vmin=0, vmax=1)
-        axs[corrind,0].set_title(f"Corr(Corr(W), Corr(A)) - {correlation_name_lst[correlation_index_lst.index(correlation_index)]}")
+        axs[corrind,0].set_title(rf"Corr(Corr(W_{correlation_name_lst[correlation_index_lst.index(correlation_index)]}), Corr(A))")
         axs[corrind,1].set_title("Corr(A)")
-        axs[corrind,2].set_title(f"Corr(W) - {correlation_name_lst[correlation_index_lst.index(correlation_index)]}")
+        axs[corrind,2].set_title(rf"Corr(W_{correlation_name_lst[correlation_index_lst.index(correlation_index)]})")
 
         diagonal = np.diag(relation_matrix)
         i, j = np.indices(relation_matrix.shape)
@@ -490,6 +486,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         for_metric[f"W_cov_{correlation_index}"] = W_cov
         for_metric[f"activity_cov_{correlation_index}"] = activity_cov
+        
         W_corr_copy, activity_correlation_copy = W_corr.copy(), activity_correlation.copy()
         np.fill_diagonal(W_corr_copy, 1)
         np.fill_diagonal(activity_correlation_copy, 1)
@@ -498,7 +495,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # current test uses the correlation matrix to analyze
         # though discussion with Praveen suggests that correlation vs. covaranece will not generate 
-        dim_loader, angle_loader, _, _ = activity_helper.angles_between_flats_wrap(W_corr_copy, activity_correlation_copy, angle_consideration=5)
+        dim_loader, angle_loader, _, _ = activity_helper.angles_between_flats_wrap(W_corr_copy, activity_correlation_copy, angle_consideration=15)
         
         metadata[f"{correlation_index}_angle"] = angle_loader
 
@@ -509,7 +506,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             angle_all = []
             for _ in range(repeat_random):
                 random_matrix = 2 * np.random.rand(*W_corr.shape) - 1
-                dim_loader, angle_loader, _, _ = activity_helper.angles_between_flats_wrap(random_matrix, activity_correlation, angle_consideration=5)
+                dim_loader, angle_loader, _, _ = activity_helper.angles_between_flats_wrap(random_matrix, activity_correlation_copy, angle_consideration=15)
                 angle_all.append(angle_loader)
             angle_all = np.array(angle_all)
             
@@ -600,10 +597,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         mix_helper.plot_3d_gmm_diag_interactive(synapse_lst, None, f"S{session_info}s{scan_info}illustration.html")
 
     # Betti analysis
-    bettiindex = True
+    bettiindex = False
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
         doconnectome = True
-        select_which_connectome = False
+        select_which_connectome = True
 
         if select_which_connectome:
             W_row_betti_corr, W_col_betti_corr = W_goodneurons_row, W_goodneurons_col
@@ -710,7 +707,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             W_col_betti_corr = np.corrcoef(W_col_betti, rowvar=True)
             W_row_betti = scipy.io.loadmat(connectome_by_activity_name_out)['connectome']
             W_row_betti_corr = np.corrcoef(W_row_betti, rowvar=True)
-            
+
             metadata["connectome_name"] = "good_connectome_by_activity"
 
             # sorting based on the pt_root_id (to make sure identical ordering)
@@ -753,11 +750,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     p_value_one_sided_final = activity_helper.stats_test2(diag1, diag2)
 
     figallcompare, axsallcompare = plt.subplots(2,1,figsize=(4,4)) # purposefully not square for paper purpose
-    axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Input On-Diagonal', color=c_vals[1], density=True)
-    axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Output On-Diagonal', color=c_vals_l[1], density=True)
-    axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Input Off-Diagonal', color=c_vals[0], density=True)
-    axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Output Off-Diagonal', color=c_vals_l[0], density=True)
-    axsallcompare[0].legend()
+    axsallcompare[0].hist(diags[0], bins=50, alpha=0.5, label='Input-Activity Corr', color=c_vals[1], density=True)
+    axsallcompare[0].hist(diags[1], bins=50, alpha=0.5, label='Output-Activity Corr', color=c_vals_l[1], density=True)
+    axsallcompare[0].hist(offdiags[0], bins=50, alpha=0.5, label='Input-Activity Control', color=c_vals[0], density=True)
+    axsallcompare[0].hist(offdiags[1], bins=50, alpha=0.5, label='Output-Activity Control', color=c_vals_l[0], density=True)
+    axsallcompare[0].legend(fontsize=8)
     axsallcompare[0].set_title(f"p1: {activity_helper.float_to_scientific(p_values_all[0])}; p2: {activity_helper.float_to_scientific(p_values_all[1])}; p3: {activity_helper.float_to_scientific(p_value_one_sided_final)}")
 
     correlation_index_lst.append("random")
@@ -795,8 +792,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             
             # use proofread connectome embedding as a whole
             # should be used as a control (= 0) in main text
-            downsample_from_conneectome = 0
-            if downsample_from_conneectome:
+            if downsample_from_connectome:
                 pendindex += "_forall"
             hyp_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
             hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}_microns__{pendindex}_embed_hypdist.mat"
@@ -806,12 +802,10 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             output_path = "./output-all"
 
         # load neuron tags
-        # connectome_by_activity_name = f"./zz_data/noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_connectome_in.mat"
         connectome_by_activity_name = f"./zz_data/{pendindex}_connectome_in.mat"
         print(connectome_by_activity_name)
 
         alltags = scipy.io.loadmat(connectome_by_activity_name)['tag']
-        print(len(alltags))
         gt_in = scipy.io.loadmat(connectome_by_activity_name)['connectome']
         corr_gt_in = np.corrcoef(gt_in, rowvar=True)
         good_cells_id = np.array(good_cells_id).reshape(-1,1)
@@ -887,6 +881,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         np.fill_diagonal(soma_distances_trc, 0)
 
         def plot_standardized_hist(ax, data, bins, label, color, alpha=0.5, density=False):
+            """
+            """
             ax.hist((data.flatten() - data.min()) / (data.max() - data.min()), 
                     bins=bins, alpha=alpha, label=label, color=color, density=density)
 
@@ -899,6 +895,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         for ax in axsdist:
             ax.legend()
+
         figdist.tight_layout()
         figdist.savefig(f"{output_path}/fromac_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_distance.png")
         
@@ -948,6 +945,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                                 out_corr, hypembed_connectome_corr_out, eulembed_connectome_corr_out, \
                                 soma_distances_trc]
 
+        evenoddlst = [False for _ in range(len(input_matrices))]
+        evenoddlst[0] = True
+
         # Top K neurons of consideration
         topK_values = [len(cell_indices_thisscan), int(len(cell_indices_thisscan)/2), int(len(cell_indices_thisscan)/5)]
         topK_repeats = [1 for _ in range(len(topK_values))]
@@ -955,14 +955,17 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # collection of all categories of reconstruction
         all_reconstruction_data = [
-            [[activity_helper.reconstruction(W, activity_extraction_extra_trc, K, random=False, permute=False)[0] for W in input_matrices]] 
+            [[activity_helper.reconstruction(input_matrices[ll], activity_extraction_extra_trc, K, random=False, permute=False, evenodd=evenoddlst[ll])[0] 
+            for ll in range(len(input_matrices))]] 
             for K in topK_values
         ]
 
         # add permuted data
         repeat_permute = 50
         all_reconstruction_data_permute = [
-            [[activity_helper.reconstruction(W, activity_extraction_extra_trc, randomK, random=True, permute=False)[0] for W in input_matrices] for _ in range(repeat_permute)]
+            [[activity_helper.reconstruction(input_matrices[ll], activity_extraction_extra_trc, randomK, random=True, permute=False, evenodd=evenoddlst[ll])[0] 
+            for ll in range(len(input_matrices))] 
+            for _ in range(repeat_permute)]
             for randomK in topK_values[1:]
         ]
 
@@ -1018,7 +1021,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         print(period_results_median_mean_K)
         metadata["allk_medians_session"] = period_results_median_mean_K        
 
-
         reconstruction_names = ["Activity Correlation", \
                                 "Connectome-In Correlation", "Connectome-In Hyp Embed", "Connectome-In Eul Embed", \
                                 "Connectome-Out Correlation", "Connectome-Out Hyp Embed", "Connectome-Out Eul Embed", \
@@ -1032,7 +1034,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                         c=c_vals[selects.index(nn)], label='GroundTruth')
             # just use activity reconstruction for now (illustration purpose)
             all_reconstruction = [all_reconstruction_data[0][0][0]]
-            # print(all_reconstruction)
             
             for j in range(len(all_reconstruction)):
                 axtest[selects.index(nn)].plot([i / fps_value for i in range(timecut)],all_reconstruction[j][nn,:timecut], \
@@ -1043,62 +1044,53 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         figtest.tight_layout()
         # figtest.savefig(f"./output/fromac_session_{session_info}_scan_{scan_info}_test.png")
 
-        timeuplst = [activity_extraction_extra_trc.shape[1]-1]
-        # Approach: temporal moving window to calculate correlation
+        timeup = activity_extraction_extra_trc.shape[1]
         KK = len(all_reconstruction_data)
 
         allk_medians = []
         for k in range(KK):
-            kk_medians = []
-            for timeup in timeuplst:
-                print(f"k:{k}; timeup: {timeup}")
-                summ = []
-                # iterate across neurons
-                # unroll time dimension
-                # we write this part explicitly (though redundant) for clarity
-                for i in range(activity_extraction_extra_trc.shape[0]):
-                    summ_rr = []
-                    for num_exp in range(len(all_reconstruction_data[k])):
-                        # Create a matrix of all windows for neuron i
-                        gt = np.lib.stride_tricks.sliding_window_view(activity_extraction_extra_trc[i], window_shape=timeup)
+            print(f"k:{k}; timeup: {timeup}")
+            summ = []
+            # iterate across neurons
+            # unroll time dimension
+            # we write this part explicitly (though redundant) for clarity
+            for i in range(activity_extraction_extra_trc.shape[0]):
+                summ_rr = []
+                for num_exp in range(len(all_reconstruction_data[k])):
+                    # simplify the code by using the whole activity trace to calculate correlation
+                    gt = activity_extraction_extra_trc[i]
+                    _, test_gt = activity_helper.bin_and_split_data(gt) # generate testing data for comparing to activity
+                    gt_a = all_reconstruction_data[k][num_exp][0][i]
+                    gt_c1 = all_reconstruction_data[k][num_exp][1][i]
+                    gt_c1_hypembed = all_reconstruction_data[k][num_exp][2][i]
+                    gt_c1_eulembed = all_reconstruction_data[k][num_exp][3][i]
+                    gt_c2 = all_reconstruction_data[k][num_exp][4][i]
+                    gt_c2_hypembed = all_reconstruction_data[k][num_exp][5][i]
+                    gt_c2_eulembed = all_reconstruction_data[k][num_exp][6][i]
+                    gt_soma = all_reconstruction_data[k][num_exp][7][i]
 
-                        gt_a = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][0][i], window_shape=timeup)
-                        gt_c1 = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][1][i], window_shape=timeup)
-                        gt_c1_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][2][i], window_shape=timeup)
-                        gt_c1_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][3][i], window_shape=timeup)
-                        gt_c2 = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][4][i], window_shape=timeup)
-                        gt_c2_hypembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][5][i], window_shape=timeup)
-                        gt_c2_eulembed = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][6][i], window_shape=timeup)
-                        gt_soma = np.lib.stride_tricks.sliding_window_view(all_reconstruction_data[k][num_exp][7][i], window_shape=timeup)
+                    def my_pearsonr(arr1, arr2):
+                        try:
+                            val = pearsonr(arr1, arr2)[0]
+                        except Exception as e:
+                            val = np.nan
+                        return val 
 
-                        # Calculate correlations in a vectorized manner
-                        corr_with_a = activity_helper.vectorized_pearsonr(gt, gt_a)
-                        corr_with_c1 = activity_helper.vectorized_pearsonr(gt, gt_c1)
-                        corr_with_c1_hypembed = activity_helper.vectorized_pearsonr(gt, gt_c1_hypembed)
-                        corr_with_c1_eulembed = activity_helper.vectorized_pearsonr(gt, gt_c1_eulembed)
-                        corr_with_c2 = activity_helper.vectorized_pearsonr(gt, gt_c2)
-                        corr_with_c2_hypembed = activity_helper.vectorized_pearsonr(gt, gt_c2_hypembed)
-                        corr_with_c2_eulembed = activity_helper.vectorized_pearsonr(gt, gt_c2_eulembed)
-                        corr_with_soma = activity_helper.vectorized_pearsonr(gt, gt_soma)
+                    summ_rr.append([my_pearsonr(test_gt, gt_a), \
+                                my_pearsonr(gt, gt_c1), my_pearsonr(gt, gt_c1_hypembed), my_pearsonr(gt, gt_c1_eulembed), \
+                                my_pearsonr(gt, gt_c2), my_pearsonr(gt, gt_c2_hypembed), my_pearsonr(gt, gt_c2_eulembed), \
+                                my_pearsonr(gt, gt_soma), \
+                            ])
 
-                        # Calculate mean of correlations across all windows for neuron i
-                        summ_rr.append([corr_with_a.mean(), \
-                                    corr_with_c1.mean(), corr_with_c1_hypembed.mean(), corr_with_c1_eulembed.mean(), \
-                                    corr_with_c2.mean(), corr_with_c2_hypembed.mean(), corr_with_c2_eulembed.mean(), \
-                                    corr_with_soma.mean(), \
-                                ])
+                summ_rr = np.mean(summ_rr, axis=0)
+                summ.append(summ_rr)
 
-                    summ_rr = np.mean(summ_rr, axis=0)
-                    summ.append(summ_rr)
-
-                summ = np.array(summ)
-                medians = {}
-                all_use = list(range(0,8))
-                medians = [np.nanmedian(summ[np.isfinite(summ[:, j]), j]) for j in sorted(all_use)]
-
-                kk_medians.append(medians)
+            summ = np.array(summ)
+            medians = {}
+            all_use = list(range(0,8))
+            medians = [np.nanmedian(summ[np.isfinite(summ[:, j]), j]) for j in sorted(all_use)]
                 
-            allk_medians.append(kk_medians)
+            allk_medians.append([medians])
 
         # plot the final results
         figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(4*len(allk_medians),4))
@@ -1106,27 +1098,25 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         for i in range(len(allk_medians)):
             medians = np.array(allk_medians[i])
             for j in range(medians.shape[1]):
-                if len(timeuplst) == 1:
-                    axsactshow[i].scatter([0 for _ in range(len(medians[:,j]))], medians[:,j], label=reconstruction_names[j])
-                else:
-                    axsactshow[i].plot(timeuplst, medians[:,j], color=plotstyles[j][0], linestyle=plotstyles[j][1], linewidth=3, label=reconstruction_names[j])
+                axsactshow[i].scatter([0 for _ in range(len(medians[:,j]))], medians[:,j], label=reconstruction_names[j])
             axsactshow[i].set_title(f"K={topK_values[i]}")
             axsactshow[i].legend()
 
         for ax in axsactshow:
             ax.axhline(y=metadata["gt_median_corr"], color='black', linestyle='--')
+            ax.axhline(y=metadata["gt_mean_corr"], color='red', linestyle='-.')
             ax.set_xlabel("Window Length")
             ax.set_ylabel("Median Correlation")
 
-        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
+        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_actcompareshow_D{embedding_dimension}_R{R_max}.png")
 
-        metadata["timeuplst"] = timeuplst
+        metadata["timeuplst"] = [timeup]
         metadata["allk_medians"] = allk_medians        
 
         print(allk_medians)
         
         # extract the metadata
-        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
+        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()
@@ -1141,6 +1131,7 @@ def benchmark_with_rnn(trial_index):
     activity_extraction_extra_trc = scipy.io.loadmat(f"./zz_data_rnn/rnn_activity_{trial_index}.mat")['activity']
     activity_extraction_extra = activity_extraction_extra_trc
     activity_correlation_all_trc = np.corrcoef(activity_extraction_extra_trc, rowvar=True)
+
     np.fill_diagonal(activity_correlation_all_trc, 0)
 
     metadata = {}
@@ -1183,9 +1174,12 @@ def benchmark_with_rnn(trial_index):
     in_corr = 1 - in_corr
     np.fill_diagonal(in_corr, 0)
 
+    check_activity_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][0]
+    check_activity_corr = 1 - check_activity_corr
+    np.fill_diagonal(check_activity_corr, 0)
+
     hypembed_name = f"./mds-rnn-results/rnn_embed_{trial_index}_hypdist.mat"
     hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][1]
-
 
     rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out, float(R_max))
     metadata["rmax_quantile_out"] = rmax_quantile_out
@@ -1253,11 +1247,10 @@ def benchmark_with_rnn(trial_index):
         axssanity[0,jj].set_title(f"{datas_names[jj]}")
         axssanity[1,jj].set_title(f"{datas_names[jj]}: {np.round(r_squared,4)}")
 
-
     figsanity.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_sanity.png")
 
     # Top K neurons of consideration
-    topK_values = ["all", 30]
+    topK_values = ["all", 30, 15, 10]
     print(f"topK_values: {topK_values}")
 
     # collection of all categories of reconstruction
@@ -1331,7 +1324,7 @@ def benchmark_with_rnn(trial_index):
     figtest.tight_layout()
     figtest.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_test.png")
 
-    timeuplst = [100,activity_extraction_extra_trc.shape[1]-1]
+    timeuplst = [activity_extraction_extra_trc.shape[1]-1]
     # timeuplst = [100,1000,10000,20000,30000,activity_extraction_extra.shape[1]-1]
     ttlength = activity_extraction_extra_trc.shape[1]
 
@@ -1341,9 +1334,9 @@ def benchmark_with_rnn(trial_index):
     figact2, axsact2 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
     figact3, axsact3 = plt.subplots(KK,len(timeuplst),figsize=(4*len(timeuplst),4*KK))
 
-    axsact1 = np.atleast_1d(axsact1)
-    axsact2 = np.atleast_1d(axsact2)
-    axsact3 = np.atleast_1d(axsact3)
+    axsact1 = np.atleast_2d(axsact1)
+    axsact2 = np.atleast_2d(axsact2)
+    axsact3 = np.atleast_2d(axsact3)
 
     def vectorized_pearsonr(x, y):
         """Compute Pearson correlation coefficient vectorized over the first axis."""
@@ -1404,13 +1397,12 @@ def benchmark_with_rnn(trial_index):
                         medians[j] = mm
                         all_use.remove(j)
 
-                    # print(summ[:, j].shape)
-                    axsacts[input_groups.index(group)][k,timeuplst.index(timeup)].hist(summ[:, j], bins=10, density=True, color=c_vals[j], alpha=0.7,
+                    axsacts[input_groups.index(group)][timeuplst.index(timeup),k].hist(summ[:, j], bins=10, density=True, color=c_vals[j], alpha=0.7,
                                                         label=f"{reconstruction_names[j]}")
-                    axsacts[input_groups.index(group)][k,timeuplst.index(timeup)].legend()
+                    axsacts[input_groups.index(group)][timeuplst.index(timeup),k].legend()
 
             for axsact in axsacts:
-                axsact[k,timeuplst.index(timeup)].set_title(f"Window Length {timeup}: K{topK_values[k]}")
+                axsact[timeuplst.index(timeup),k].set_title(f"Window Length {timeup}: K{topK_values[k]}")
 
             # Oct 7th
             # need sorting otherwise the order is inconsistent with the legend 
@@ -1432,7 +1424,6 @@ def benchmark_with_rnn(trial_index):
     figact2.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_actcompare2.png")
     figact3.savefig(f"./output_rnn/fromac_session_rnn_{trial_index}_actcompare3.png")
 
-
     figactshow, axsactshow = plt.subplots(1,len(allk_medians),figsize=(10*len(allk_medians),10))
 
     for i in range(len(allk_medians)):
@@ -1443,7 +1434,7 @@ def benchmark_with_rnn(trial_index):
         axsactshow[i].set_title(f"K={topK_values[i]}")
         axsactshow[i].legend()
 
-    for ax in axsactshow:
+    for ax in axsactshow.flatten():
         ax.set_xlabel("Window Length")
         ax.set_ylabel("Median Correlation")
 
@@ -1454,20 +1445,13 @@ def benchmark_with_rnn(trial_index):
     metadata["allk_medians"] = allk_medians
     
     with open(f"./output_rnn/fromac_session_rnn_{trial_index}_metadata.pkl", "wb") as pickle_file:
-        pickle.dump(metadata, pickle_file)
-
-    
+        pickle.dump(metadata, pickle_file)  
 
 if __name__ == "__main__":
-
-    # all_run(2, "1",False)
-
-    # for trial_index in range(50):
-    #     try:
-    #         benchmark_with_rnn(trial_index)
-    #     except Exception as e:
-    #         print(e)
-    #         continue
+    for trial_index in range(50):
+        benchmark_with_rnn(trial_index)
 
     microns_across_scans.microns_across_scans_rnn(0)
-    # microns_across_scans.microns_across_scans_rnn(1)
+    microns_across_scans.microns_across_scans_rnn(1)
+    microns_across_scans.microns_across_scans_rnn(2)
+    microns_across_scans.microns_across_scans_rnn(3)
