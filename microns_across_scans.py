@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+import time
 
 import activity_helper
 
@@ -78,6 +79,8 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
 
             activity_explain = allk_medians[0]
 
+            mean_value = np.mean(data["gt_median_corr"])
+
             if not showactivity:
                 column_explainratio = allk_medians[1]/allk_medians[0]
                 row_explainratio = allk_medians[4]/allk_medians[0]
@@ -103,8 +106,10 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                 session_outhyp = allk_medians_session[5]
                 session_outeul = allk_medians_session[6]
             
-            coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, np.nan, np.nan, soma_explainratio, session_act, session_in, session_inhyp, session_ineul])
-            rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, np.nan, np.nan, soma_explainratio, session_act, session_out, session_outhyp, session_outeul])
+            coldata.append([num_neurons, column_primary_angle, column_explainratio, activity_explain, in_hyp_ratio, in_eul_ratio, mean_value, \
+                            np.nan, np.nan, soma_explainratio, session_act, session_in, session_inhyp, session_ineul])
+            rowdata.append([num_neurons, row_primary_angle, row_explainratio, activity_explain, out_hyp_ratio, out_eul_ratio, mean_value, \
+                            np.nan, np.nan, soma_explainratio, session_act, session_out, session_outhyp, session_outeul])
             
         coldata, rowdata = np.array(coldata), np.array(rowdata)
         alldata = [coldata, rowdata]
@@ -127,7 +132,6 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                     indices = [[0,1],[2,3]]
                 else:
                     indices = [[0,1,2],[3,4,5]]
-
 
         for i in range(len(alldata)):
             kk = 0
@@ -154,13 +158,14 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
             # axs[i].set_ylabel(f"Activity Correlation")
             axs[i].legend()
 
-            hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,8].flatten()
-            hypratiopm, eulratiopm = alldata[i][:,6].flatten(), alldata[i][:,7].flatten()
+            hypratio, eulratio, somaratio = alldata[i][:,4].flatten(), alldata[i][:,5].flatten(), alldata[i][:,9].flatten()
+            hypratiopm, eulratiopm = alldata[i][:,7].flatten(), alldata[i][:,8].flatten()
+            meansess = alldata[i][:,6].flatten()
 
-            activity_session_base = alldata[i][:,9].flatten()
-            activity_session_in = alldata[i][:,10].flatten()
-            activity_session_inhyp = alldata[i][:,11].flatten()
-            activity_session_ineul = alldata[i][:,12].flatten()
+            activity_session_base = alldata[i][:,10].flatten()
+            activity_session_in = alldata[i][:,11].flatten()
+            activity_session_inhyp = alldata[i][:,12].flatten()
+            activity_session_ineul = alldata[i][:,13].flatten()
 
             if showpermute:
                 data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
@@ -174,11 +179,10 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         data = [hypratio/activity_base, eulratio/activity_base, toactratio/activity_base]
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, toactratio])
-                        print(activity_helper.stats_test(data[0], data[2]))
-                        print(np.median(toactratio))
                         data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
-                        print(activity_helper.stats_test(data_session[0], data_session[2]))
 
+            benchmark_session_mean = meansess / activity_base
+            mean_benchmark = np.mean(benchmark_session_mean)
 
             positions = [indices[i][j] for j in range(len(indices[i]))]
             
@@ -190,6 +194,9 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                     axexp[0].scatter(positions[posindex], datapt, color=c_vals[positions[posindex]]) 
                 for datapt in data_session[posindex]:
                     axexp[1].scatter(positions[posindex], datapt, color=c_vals[positions[posindex]])
+
+            for ax in axexp:
+                ax.axhline(mean_benchmark, c='red', linestyle='--')
 
             for j, (body1, body2) in enumerate(zip(violin_parts['bodies'], violin_parts_session['bodies'])):
                 color = c_vals[indices[i][j]]  # Determine color for the current index
@@ -215,7 +222,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
         for ax in axexp:
             ax.set_xticks(range(len(names))) 
             ax.set_xticklabels(names, rotation=45, ha='right')
-            ax.set_ylim([-0.2,0.8])
+            ax.set_ylim([-0.2, 1.0])
 
             if not showactivity:
                 ax.axhline(1, c='red', linestyle='--')
@@ -241,9 +248,8 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
     figacrossK, axsacrossK = plt.subplots(figsize=(4,4))
     x_ticks = ["All", "Top 50%", "Top 20%", "Random 50%", "Random 20%"]
     xxxx = [i for i in range(len(x_ticks))]
-    for i, label, color in zip(
-        range(3), ["Activity", "HypIn", "In"], c_vals
-    ):
+    
+    for i, label, color in zip(range(3), ["Activity", "HypIn", "In"], c_vals):
         mean_values = [np.mean(Krange_data[j][i]) for j in range(len(Krange_data))]
         std_values = [np.std(Krange_data[j][i]) for j in range(len(Krange_data))]
         
@@ -365,7 +371,7 @@ def microns_across_scans_rnn(Kselect):
         ames = ["HypIn", "EulIn", "InAct", "HypOut", "EulOut", "OutAct", "Activity"]
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
-    axexp.set_ylim([-0.2,0.8])
+    axexp.set_ylim([-0.2,1.0])
 
     if not showminimal:
         axexp.set_ylabel("Correlation")
