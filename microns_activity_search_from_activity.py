@@ -58,13 +58,10 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     """
     # # all session and scan information
     session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
-    
-    # selected scans
-    # session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[9,3],[9,4],[6,4]]
 
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
     for_construction = True
-    for_parallel = False
+    for_parallel = True
 
     job_num = -1 if for_parallel else 1 
 
@@ -74,6 +71,8 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
                     scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome)
         for ss in session_scan
     )
+
+    print(param_results)
 
     gc.collect()
 
@@ -220,6 +219,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         sample_condition = lambda pt_root_id: pt_root_id in prf_coreg_ids and pt_root_id in good_ct_all_pt_rootids
     else:
         sample_condition = lambda pt_root_id: pt_root_id in prf_coreg_ids
+
+    # all the activity information within this scan
+    activity_database = session_ds["activity"].values
 
     for index, pt_root_id in enumerate(cell_table["pt_root_id"]):
         # Dec 5th Update: only consider neurons that 1) functionally coregistered; 2) structurally confident (far more strict on axons than dendrites)
@@ -537,6 +539,31 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     activity_correlation_all_trc = np.delete(activity_correlation_all_trc, neurons_tobe_deleted, axis=1)
     np.fill_diagonal(activity_correlation_all_trc, 0)
 
+    activity_cov_all_trc = np.delete(activity_cov_all, neurons_tobe_deleted, axis=0)  # Delete rows
+    activity_cov_all_trc = np.delete(activity_cov_all_trc, neurons_tobe_deleted, axis=1)
+    # participation ratio
+    def pr(activity_cov_all_trc):
+        """input is N*N covariance matrix, N the number of neurons"""
+        eigenvalues = np.linalg.eigvalsh(activity_cov_all_trc)
+        eigenvalues = eigenvalues[eigenvalues > 0]
+        participation_ratio = (np.sum(eigenvalues) ** 2) / np.sum(eigenvalues ** 2)
+        return participation_ratio / activity_cov_all_trc.shape[0]
+    
+    def random_select_activity(array, P):
+        """"""
+        N = array.shape[0]
+        selected_indices = np.random.choice(N, size=P, replace=False)
+        selected_rows = array[selected_indices, :]
+        return selected_rows
+
+    print(f"Participation Ratio: {pr(activity_cov_all_trc)}")
+    rsa = [random_select_activity(activity_database, activity_cov_all_trc.shape[0]) for _ in range(100)]
+    rpr = [pr(np.cov(rsa_i, rowvar=True)) for rsa_i in rsa]
+    print(f"Random Participation Ratio: {np.mean(rpr)}")
+
+    metadata["participation_ratio"] = pr(activity_cov_all_trc)
+    metadata["random_participation_ratio"] = np.mean(rpr)
+
     in_sample_trc = np.delete(W_samples[0], neurons_tobe_deleted, axis=1)
     out_sample_trc = np.delete(W_samples[1], neurons_tobe_deleted, axis=0)
 
@@ -599,8 +626,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # Betti analysis
     bettiindex = False
     if bettiindex and whethernoise in ["normal", "noise", "all"]: # only do it once
-        doconnectome = True
-        select_which_connectome = True
+        doconnectome = False
+        select_which_connectome = False
 
         if select_which_connectome:
             W_row_betti_corr, W_col_betti_corr = W_goodneurons_row, W_goodneurons_col
@@ -828,7 +855,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             in_corr = in_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             out_corr = out_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
 
-        # **** Hyperbolic Output ****
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex]  
         hypembed_connectome_out_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][outindex] 
         assert hypembed_connectome_distance_out.shape == corr_gt_in.shape
@@ -840,7 +866,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         hypembed_connectome_corr_out = activity_helper.scaling_help(hypembed_connectome_distance_out)
         np.fill_diagonal(hypembed_connectome_corr_out, 0)
 
-        # **** Hyperbolic Input ****
         hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][inindex]
         hypembed_connectome_in_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][inindex] 
         assert hypembed_connectome_distance_in.shape == corr_gt_in.shape
@@ -854,7 +879,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # load Euclidean embedding coordinate
         # calcualate the pairwise Euclidean distance afterward   
-        # **** Euclidean Output ****
         eulembed_connectome_out = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][outindex]
         eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome_out, metric='euclidean'))
         assert eulembed_connectome_distance_out.shape == corr_gt_in.shape
@@ -865,7 +889,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         eulembed_connectome_corr_out = activity_helper.scaling_help(eulembed_connectome_distance_out)
         np.fill_diagonal(eulembed_connectome_corr_out, 0)
 
-        # **** Hyperbolic Input ****
         eulembed_connectome_in = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][inindex]
         eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome_in, metric='euclidean'))
         assert eulembed_connectome_distance_in.shape == corr_gt_in.shape
@@ -1124,17 +1147,22 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     gc.collect()
 
+    return metadata
+
 
 def benchmark_with_rnn(trial_index):
     """
     """
+    metadata = {}
+
     activity_extraction_extra_trc = scipy.io.loadmat(f"./zz_data_rnn/rnn_activity_{trial_index}.mat")['activity']
     activity_extraction_extra = activity_extraction_extra_trc
     activity_correlation_all_trc = np.corrcoef(activity_extraction_extra_trc, rowvar=True)
 
-    np.fill_diagonal(activity_correlation_all_trc, 0)
+    metadata["mean_activity_corr"] = np.mean(activity_correlation_all_trc)
+    print(metadata["mean_activity_corr"])
 
-    metadata = {}
+    np.fill_diagonal(activity_correlation_all_trc, 0)
 
     def reconstruction(W, K="all", permute=False):
         """

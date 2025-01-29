@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 import time
+import seaborn as sns
+from scipy.stats import ttest_ind, ttest_rel
 
 import activity_helper
 
@@ -16,34 +18,70 @@ plt.style.use(['no-latex'])
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
+def find_pkl_files(directory, dimension, R_max, pendindex):
+    """"""
+    # only select pkl files with desired dimension and R_max
+    strname1 = f"D{dimension}_R{R_max}.pkl"
+    strname2 = pendindex
+    
+    all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
+    if "forall" in strname2:
+        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
+    else:
+        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f) and "forall" not in os.path.basename(f)]
+
+    assert len(matching_files) > 10 and len(matching_files) <= 12
+    
+    return matching_files
+
+def analyze_pr(pkl_files):
+    """"""
+    alldata = []
+    for pkl_file_path in pkl_files:
+        with open(pkl_file_path, 'rb') as file:
+            data = pickle.load(file)
+        N = data["num_neurons"]
+        pr = data["participation_ratio"]
+        rpr = data["random_participation_ratio"]
+        alldata.append([N, pr, rpr])
+
+    alldata = np.array(alldata)
+
+    data_for_violin = [alldata[:,1], alldata[:,2]]
+    positions = [0, 1]
+    fig, ax = plt.subplots(figsize=(4,4))
+    violin_parts = ax.violinplot(data_for_violin, positions=positions, showmeans=False, showmedians=True)
+
+    for j, body1 in enumerate(violin_parts['bodies']):
+        color = c_vals[j] 
+        body1.set_facecolor(color)      
+        body1.set_edgecolor('black')    
+        body1.set_alpha(0.7)
+
+    for i, col_data in enumerate(data_for_violin):
+        x_positions = np.full_like(col_data, i) + np.random.uniform(-0.1, 0.1, size=len(col_data))  # jitter for better visibility
+        plt.scatter(x_positions, col_data, s=alldata[:,0]*0.5, alpha=0.6, color=c_vals_l[i])
+
+    plt.xticks([0, 1], ['PR for Coregistered Neuron', 'PR for Random Neuron'])
+    plt.ylabel('Normalized Participation Ratio')
+    plt.savefig("participation_ratio.png")
+    print("done")
+    time.sleep(1000)
+
 def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific):
     """
     """
+    print(R_max)
     Krange_data = []
 
     for Kselect in range(Kselect_lst):
-
-        def find_pkl_files(directory):
-            # only select pkl files with desired dimension and R_max
-            strname1 = f"D{dimension}_R{R_max}.pkl"
-            strname2 = pendindex
-            
-            all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
-            if "forall" in strname2:
-                matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
-            else:
-                matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f) and "forall" not in os.path.basename(f)]
-
-            assert len(matching_files) > 10 and len(matching_files) <= 12
-
-            return matching_files
-
         if scan_specific:
             directory_path = "./output/"
         else:
             directory_path = "./output-all/"
-        pkl_files = find_pkl_files(directory_path)
-        print(pkl_files)
+        pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex)
+
+        # analyze_pr(pkl_files)
         
         coldata, rowdata, somadata = [], [], []
         rmax_quantiles = []
@@ -141,7 +179,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
             ppt = toactratio
 
             slope, intercept, r_value, p_value, std_err = stats.linregress(xx, ppt)
-            print(f"p_value: {p_value}")
+            # print(f"p_value: {p_value}")
 
             xx_line = np.linspace(np.min(xx), np.max(xx), 100)  
             yy_line = slope * xx_line + intercept  
@@ -177,6 +215,9 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         data = [hypratio/activity_base, toactratio/activity_base]
                     else:
                         data = [hypratio/activity_base, eulratio/activity_base, toactratio/activity_base]
+                        _, p_value = ttest_rel(data[0], data[2], alternative="greater")
+                        print(p_value)
+
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, toactratio])
                         data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
@@ -286,6 +327,7 @@ def microns_across_scans_rnn(Kselect):
     
     coldata, rowdata, somadata = [], [], []
     rmax_quantiles = []
+    act_mean = []
 
     timeselect = "all"
 
@@ -299,6 +341,8 @@ def microns_across_scans_rnn(Kselect):
             ttind = data["timeuplst"].index(timeselect)
 
         cc = 1
+
+        act_mean.append(data["mean_activity_corr"])
 
         num_neurons = None
         rmax_quantiles.append([data["rmax_quantile_out"], data["rmax_quantile_in"]])
@@ -320,6 +364,8 @@ def microns_across_scans_rnn(Kselect):
 
         coldata.append([num_neurons, column_primary_angle, column_explainratio, in_hyp_ratio, in_eul_ratio, soma_explainratio, activity_ratio])
         rowdata.append([num_neurons, row_primary_angle, row_explainratio, out_hyp_ratio, out_eul_ratio, soma_explainratio, activity_ratio])
+
+    act_corr_mean = np.mean(act_mean)
 
     coldata, rowdata = np.array(coldata), np.array(rowdata)
     alldata = [coldata, rowdata]
@@ -362,6 +408,7 @@ def microns_across_scans_rnn(Kselect):
             body.set_edgecolor('black')             # Optionally set edge color
             body.set_alpha(0.7)                     # Set transparency (optional)
 
+
     fig.tight_layout()
     fig.savefig(f"./output_rnn/zz_overall_rnn_K{Kselect}.png")
 
@@ -372,6 +419,7 @@ def microns_across_scans_rnn(Kselect):
     axexp.set_xticks(range(len(names))) 
     axexp.set_xticklabels(names, rotation=45, ha='right')
     axexp.set_ylim([-0.2,1.0])
+    axexp.axhline(np.mean(act_mean/actratio), c='red', linestyle='--')
 
     if not showminimal:
         axexp.set_ylabel("Correlation")

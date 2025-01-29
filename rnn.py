@@ -91,7 +91,7 @@ class CTRNN_Net(nn.Module):
 
 for i in range(50):
 
-    input_size = 2     
+    input_size = 25 
     hidden_size = 100   
     output_size = 2    
     sequence_length = 30000
@@ -103,7 +103,6 @@ for i in range(50):
 
     scale = 1
     random_input = scale * torch.randn(batch_size, sequence_length, input_size)
-
 
     output, hidden_states = rnn(random_input)
 
@@ -127,7 +126,7 @@ for i in range(50):
     eigenvalues = np.linalg.eigvalsh(cov_matrix)
     eigenvalues = eigenvalues[eigenvalues > 0]
     participation_ratio = (np.sum(eigenvalues) ** 2) / np.sum(eigenvalues ** 2)
-    print(f"Participation ratio: {participation_ratio}")
+    print(f"Participation ratio: {participation_ratio/hidden_size}")
 
     dim_loader, angle_loader1, _, _ = activity_helper.angles_between_flats_wrap(weight_corr_in, activity_corr, angle_consideration=15)
     dim_loader, angle_loader2, _, _ = activity_helper.angles_between_flats_wrap(weight_corr_out, activity_corr, angle_consideration=15)

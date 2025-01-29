@@ -590,8 +590,7 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
     NneuronWrow = data_lst[3].shape[0]
     NneuronWcol = data_lst[4].shape[0]
 
-    if doconnectome:
-        figgood, axsgood = plt.subplots(2,3,figsize=(4*3,4*2))
+    figgood, axsgood = plt.subplots(2,3,figsize=(4*3,4*2))
 
     datanum = len(data_lst) if doconnectome else 1
 
@@ -746,7 +745,6 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
                 errbetti = [mean_squared_error(spline_set(meanbetti[i]), spline_set(groundtruth_bettis[j][i])) for i in range(3)]
                 oneerr.append(np.sum(errbetti))
             allerrs.append(oneerr)
-            print(oneerr)
 
             allsynthetic.append([meanbetti, stdbetti, moving_average(edge_densities,dd)])
 
@@ -758,6 +756,12 @@ def betti_analysis(data_lst, inputnames, metadata=None, doconnectome=False):
             # axs[index].set_title(f"{inputnames[index]}; {fields[minerr_index]} ")
             realbetti, fakebetti = groundtruth_integratedbettis[index], fake_integrated_bettis[minerr_index]
             fakeallbettis.append([realbetti, fakebetti])
+            print(allerrs[minerr_index])
+            print(realbetti)
+            print(np.mean(fakebetti[0]))
+            print(np.mean(fakebetti[1]))
+            print(np.mean(fakebetti[2]))
+
             for i in range(3):
                 edge_densities = synthetic_best[2]
                 axs[index].plot(edge_densities, synthetic_best[0][i], c=colorset[iii][i], linestyle=lines[iii], label=f"{names[iii]} Betti {i+1}")
