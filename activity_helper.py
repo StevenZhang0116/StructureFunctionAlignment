@@ -327,7 +327,8 @@ def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permu
 
         filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
     
-    row_sums_a = np.sum(np.abs(filtered_matrix), axis=1)
+    # row_sums_a = np.sum(np.abs(filtered_matrix), axis=1) # 1-norm
+    row_sums_a = np.linalg.norm(filtered_matrix, axis=1, ord=2, keepdims=True) # 2-norm
 
     filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
 

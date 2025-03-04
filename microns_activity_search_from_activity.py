@@ -103,7 +103,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     prf_coreg = pd.read_csv("./microns/prf_coreg.csv")
     # take the information belong to that specific session
     prf_coreg = prf_coreg[(prf_coreg["session"] == session_info) & (prf_coreg["scan_idx"] == scan_info)]
-    print(len(prf_coreg))
 
     # read in microns cell/synapse information
     # loading in different versions of cell tables
@@ -263,6 +262,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     # selected neuron
     selectss_df = cell_table.loc[selected_neurons].reset_index(drop=True)
+
 
     assert all(selectss_df["classification_system"] == "excitatory_neuron"), "Not all values are 'excitatory_neuron'"
 
@@ -541,6 +541,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     activity_cov_all_trc = np.delete(activity_cov_all, neurons_tobe_deleted, axis=0)  # Delete rows
     activity_cov_all_trc = np.delete(activity_cov_all_trc, neurons_tobe_deleted, axis=1)
+    
     # participation ratio
     def pr(activity_cov_all_trc):
         """input is N*N covariance matrix, N the number of neurons"""
