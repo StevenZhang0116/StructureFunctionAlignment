@@ -5,6 +5,7 @@ import gc
 import seaborn as sns
 import numpy as np 
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 import scipy 
 from scipy.interpolate import CubicSpline
@@ -39,6 +40,29 @@ c_vals_d = ['#9b2c2c', '#2c5282', '#276749', '#553c9a', '#9c4221', '#285e61', '#
 colorset = [c_vals_l, c_vals_d]
 lines = ["-.", "--"]
 
+def merge_dicts_list(dict_list):
+    """
+    Merge a list of dictionaries such that:
+    - For keys that appear in multiple dictionaries, the value in the merged dictionary
+      is the average of all values for that key.
+    - For keys that appear in only one dictionary, the corresponding value is used.
+    
+    Parameters:
+    - dict_list: List of dictionaries with numeric values.
+    
+    Returns:
+    - merged: A new dictionary with combined keys and averaged values.
+    """
+    accum = defaultdict(list)
+    
+    for d in dict_list:
+        for key, value in d.items():
+            accum[key].append(value)
+    
+    merged = {key: sum(values)/len(values) for key, values in accum.items()}
+    merged = {int(k) if isinstance(k, np.integer) else k: v for k, v in merged.items()}
+
+    return merged
 
 def reverse_binary(array):
     """
@@ -129,9 +153,49 @@ def clustering_by_soma(soma_positions, output_name, givenlabels=None):
     return labels
 
 def scaling_help(A):
-    B = A.max() - A
-    B_normalized = (B - B.min()) / (B.max() - B.min())
-    return B_normalized
+    """
+    """
+    A = (A - A.min()) / (A.max() - A.min())
+    A = 1 - A
+    return A
+
+def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permute=False, evenodd=False):
+    """
+    add option to only take top K components in reconstruction
+    if K=None, then using all neurons (without any low-pass filter)
+    """
+    if evenodd: # this must be activity correlation
+        training_data, testing_data = bin_and_split_data(activity_extraction_extra_trc)
+        W = np.corrcoef(training_data, rowvar=True)
+        np.fill_diagonal(W, 0) # zero-out diagonal
+    else:
+        testing_data = activity_extraction_extra_trc
+
+    if isinstance(K, str):
+        if K[0] == "r":
+            br = K.index("_")
+            K = int(K[br+1:])
+            # print(K)
+            random = True
+
+    filtered_matrix = np.zeros_like(W)
+    for i in range(W.shape[0]):
+        if not random:
+            top_k_indices = np.argsort(W[i])[-K:]        
+        else:
+            top_k_indices = np.random.choice(len(W[i]), size=K, replace=False)
+
+        filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
+    
+    # row_sums_a = np.sum(np.abs(filtered_matrix), axis=1) # 1-norm
+    # row_sums_a = np.linalg.norm(filtered_matrix, axis=1, ord=2) # 2-norm
+    row_sums_a = np.ones(filtered_matrix.shape[0]) # no normalization
+
+    filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
+
+    activity_reconstruct_a = filtered_matrix_normalized @ testing_data  
+
+    return activity_reconstruct_a, filtered_matrix_normalized
 
 def shepard_fit(x, y, epsilon=1e-6):
     """
@@ -299,42 +363,7 @@ def bin_and_split_data(data, num_bins=100):
 
     return training_data, testing_data
 
-def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permute=False, evenodd=False):
-    """
-    add option to only take top K components in reconstruction
-    if K=None, then using all neurons (without any low-pass filter)
-    """
-    if evenodd: # this must be activity correlation
-        training_data, testing_data = bin_and_split_data(activity_extraction_extra_trc)
-        W = np.corrcoef(training_data, rowvar=True)
-        np.fill_diagonal(W, 0) # zero-out diagonal
-    else:
-        testing_data = activity_extraction_extra_trc
 
-    if isinstance(K, str):
-        if K[0] == "r":
-            br = K.index("_")
-            K = int(K[br+1:])
-            # print(K)
-            random = True
-
-    filtered_matrix = np.zeros_like(W)
-    for i in range(W.shape[0]):
-        if not random:
-            top_k_indices = np.argsort(W[i])[-K:]        
-        else:
-            top_k_indices = np.random.choice(len(W[i]), size=K, replace=False)
-
-        filtered_matrix[i, top_k_indices] = W[i, top_k_indices]
-    
-    # row_sums_a = np.sum(np.abs(filtered_matrix), axis=1) # 1-norm
-    row_sums_a = np.linalg.norm(filtered_matrix, axis=1, ord=2, keepdims=True) # 2-norm
-
-    filtered_matrix_normalized = filtered_matrix / row_sums_a[:, np.newaxis]
-
-    activity_reconstruct_a = filtered_matrix_normalized @ testing_data  
-
-    return activity_reconstruct_a, filtered_matrix_normalized
 
 def vectorized_pearsonr(x, y):
     """

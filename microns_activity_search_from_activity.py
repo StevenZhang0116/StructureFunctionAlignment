@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import time
+import json 
 import seaborn as sns 
 import matplotlib.pyplot as plt 
 from matplotlib.colors import LinearSegmentedColormap
@@ -52,27 +53,37 @@ plotstyles = [[c_vals[0], linestyles[0]], \
             [c_vals[4], linestyles[0]], [c_vals[4], linestyles[1]], [c_vals[4], linestyles[2]], [c_vals[4], linestyles[3]]
         ]
 
-
 def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome):
     """
     """
     # # all session and scan information
     session_scan = [[8,5],[4,7],[6,6],[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4]]
-
+    # session_scan = [[8,5],[4,7]]
+    
     # for some analysis, need to run one trail with for_construction=False then run again with for_construction=True
     for_construction = True
     for_parallel = True
 
     job_num = -1 if for_parallel else 1 
 
-    param_results = Parallel(n_jobs=job_num)(
-        delayed(run)(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
-                    whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
-                    scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome)
-        for ss in session_scan
-    )
+    neuron_eul_pref_in_lst = []
+    neuron_eul_pref_out_lst = []
+    for ss in session_scan:
+        metadata, neuron_eul_pref_in, neuron_eul_pref_out = run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
+            whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
+            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome)
+        
+        neuron_eul_pref_in_lst.append(neuron_eul_pref_in)
+        neuron_eul_pref_out_lst.append(neuron_eul_pref_out)
 
-    print(param_results)
+    merged_perf_in = activity_helper.merge_dicts_list(neuron_eul_pref_in_lst)
+    merged_perf_out = activity_helper.merge_dicts_list(neuron_eul_pref_out_lst)
+    
+    with open(f'./perf_record/dim{embedding_dimension}_in.json', 'w') as file:
+        json.dump(merged_perf_in, file)
+
+    with open(f'./perf_record/dim{embedding_dimension}_out.json', 'w') as file:
+        json.dump(merged_perf_out, file)
 
     gc.collect()
 
@@ -822,9 +833,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             # should be used as a control (= 0) in main text
             if downsample_from_connectome:
                 pendindex += "_forall"
-            hyp_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
-            hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}_microns__{pendindex}_embed_hypdist.mat"
-            hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed.mat"
+            hyp_name = f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"
+            hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_2_microns__{pendindex}_embed_hypdist.mat"
+            hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"
             eulembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed_eulmds.mat"
             inindex, outindex = 1, 0
             output_path = "./output-all"
@@ -844,17 +855,13 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         missing_values = [value for value in good_cells_id if not (alltags == value).any()]
         assert len(missing_values) == 0
 
-        out_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][outindex]
-        out_corr = 1 - out_corr
+        out_dist = scipy.io.loadmat(hyp_name)['Ddists'][0][outindex]
+        out_corr = 1 - out_dist
         np.fill_diagonal(out_corr, 0)
 
-        in_corr = scipy.io.loadmat(hyp_name)['Ddists'][0][inindex]
-        in_corr = 1 - in_corr
-        np.fill_diagonal(in_corr, 0)
-
-        if not scan_specific:
-            in_corr = in_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            out_corr = out_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
+        in_dist = scipy.io.loadmat(hyp_name)['Ddists'][0][inindex]
+        in_corr = 1 - in_dist
+        np.fill_diagonal(in_corr, 0)            
 
         hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex]  
         hypembed_connectome_out_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][outindex] 
@@ -903,25 +910,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # soma distance (baseline)
         soma_distances_trc = activity_helper.find_value_for_quantile(soma_distances_trc, np.mean([rmax_quantile_in, rmax_quantile_out])) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
-
-        def plot_standardized_hist(ax, data, bins, label, color, alpha=0.5, density=False):
-            """
-            """
-            ax.hist((data.flatten() - data.min()) / (data.max() - data.min()), 
-                    bins=bins, alpha=alpha, label=label, color=color, density=density)
-
-        # plot the distance distribution
-        figdist, axsdist = plt.subplots(1,2,figsize=(4*2,4))
-        plot_standardized_hist(axsdist[0], hypembed_connectome_distance_out, bins=50, label='Hyperbolic Output', color=c_vals[1])
-        plot_standardized_hist(axsdist[0], eulembed_connectome_distance_out, bins=50, label='Euclidean Output', color=c_vals[0])
-        plot_standardized_hist(axsdist[1], hypembed_connectome_distance_in, bins=50, label='Hyperbolic Input', color=c_vals[1])
-        plot_standardized_hist(axsdist[1], eulembed_connectome_distance_in, bins=50, label='Euclidean Input', color=c_vals[0])
-
-        for ax in axsdist:
-            ax.legend()
-
-        figdist.tight_layout()
-        figdist.savefig(f"{output_path}/fromac_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_distance.png")
         
         # plot the embedding
         figshowembedding = plt.figure(figsize=(4*2,4*2))
@@ -959,15 +947,38 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         figshowembedding.savefig(f"{output_path}/fromac_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_embedding.png")
 
         if not scan_specific:
+            in_corr = in_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
+            out_corr = out_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             hypembed_connectome_corr_in = hypembed_connectome_corr_in[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             hypembed_connectome_corr_out = hypembed_connectome_corr_out[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             eulembed_connectome_corr_in = eulembed_connectome_corr_in[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
             eulembed_connectome_corr_out = eulembed_connectome_corr_out[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
 
+        def plot_hist(ax, data, bins, label, color, alpha=0.5, density=False):
+            """
+            """
+            ax.hist(data.flatten(), bins=bins, alpha=alpha, label=label, color=color, density=density)
+
+        # plot the corr distribution
+        figdist, axsdist = plt.subplots(1,2,figsize=(4*2,4))
+        plot_hist(axsdist[0], out_corr, bins=50, label='Output', color=c_vals[2])
+        plot_hist(axsdist[0], hypembed_connectome_corr_out, bins=50, label='Hyperbolic Output', color=c_vals[1])
+        plot_hist(axsdist[0], eulembed_connectome_corr_out, bins=50, label='Euclidean Output', color=c_vals[0])
+        plot_hist(axsdist[1], in_corr, bins=50, label='Input', color=c_vals[2])
+        plot_hist(axsdist[1], hypembed_connectome_corr_in, bins=50, label='Hyperbolic Input', color=c_vals[1])
+        plot_hist(axsdist[1], eulembed_connectome_corr_in, bins=50, label='Euclidean Input', color=c_vals[0])
+
+        for ax in axsdist:
+            ax.legend()
+
+        figdist.tight_layout()
+        figdist.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_distance.png")
+
+        # actual fitting
         input_matrices = [activity_correlation_all_trc, \
-                                in_corr, hypembed_connectome_corr_in, eulembed_connectome_corr_in, \
-                                out_corr, hypembed_connectome_corr_out, eulembed_connectome_corr_out, \
-                                soma_distances_trc]
+                            in_corr, hypembed_connectome_corr_in, eulembed_connectome_corr_in, \
+                            out_corr, hypembed_connectome_corr_out, eulembed_connectome_corr_out, \
+                            soma_distances_trc]
 
         evenoddlst = [False for _ in range(len(input_matrices))]
         evenoddlst[0] = True
@@ -1071,6 +1082,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         timeup = activity_extraction_extra_trc.shape[1]
         KK = len(all_reconstruction_data)
 
+        neuron_eul_pref_in, neuron_eul_pref_out = {}, {}
+
         allk_medians = []
         for k in range(KK):
             print(f"k:{k}; timeup: {timeup}")
@@ -1094,6 +1107,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                     gt_soma = all_reconstruction_data[k][num_exp][7][i]
 
                     def my_pearsonr(arr1, arr2):
+                        assert arr1.shape == arr2.shape
                         try:
                             val = pearsonr(arr1, arr2)[0]
                         except Exception as e:
@@ -1105,14 +1119,20 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                                 my_pearsonr(gt, gt_c2), my_pearsonr(gt, gt_c2_hypembed), my_pearsonr(gt, gt_c2_eulembed), \
                                 my_pearsonr(gt, gt_soma), \
                             ])
-
                 summ_rr = np.mean(summ_rr, axis=0)
                 summ.append(summ_rr)
 
             summ = np.array(summ)
+
+            assert len(cell_indices_thisscan) == summ.shape[0]
+            if k == 0: 
+                for neuron_index in range(len(cell_indices_thisscan)):
+                    neuron_eul_pref_in[cell_indices_thisscan[neuron_index]] = summ[neuron_index, 3]
+                    neuron_eul_pref_out[cell_indices_thisscan[neuron_index]] = summ[neuron_index, 6]
+
             medians = {}
             all_use = list(range(0,8))
-            medians = [np.nanmedian(summ[np.isfinite(summ[:, j]), j]) for j in sorted(all_use)]
+            medians = [np.nanmean(summ[np.isfinite(summ[:, j]), j]) for j in sorted(all_use)]
                 
             allk_medians.append([medians])
 
@@ -1148,7 +1168,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     gc.collect()
 
-    return metadata
+    return metadata, neuron_eul_pref_in, neuron_eul_pref_out
 
 
 def benchmark_with_rnn(trial_index):

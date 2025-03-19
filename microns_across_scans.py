@@ -221,7 +221,6 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                             Krange_data.append([activity_base, hypratio, toactratio])
                         data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
                         _, p_value_session = ttest_rel(data_session[0], data_session[2], alternative="greater")
-                        print(p_value_session)
 
             benchmark_session_mean = meansess / activity_base
             mean_benchmark = np.mean(benchmark_session_mean)
