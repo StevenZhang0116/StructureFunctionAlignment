@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd 
 import os 
 import scipy 
 import time
@@ -68,3 +69,14 @@ def summarize_data(ww, cc, ss, index, scan_specific):
     print(nonduplicate_connectome.shape)
 
     scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
+    
+if __name__ == "__main__":
+    data = scipy.io.loadmat("./zz_data/noise_normal_cc_count_ss_all_connectome_in.mat")
+    cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
+    
+    cnt = 0
+    for tag in data["tag"].flatten():
+        row = cell_table_new[cell_table_new["pt_root_id"] == tag]
+        if row["status_axon"].item() in ("clean", "extended") and row["full_dendrite"].item() == True:
+            cnt += 1
+    print(cnt)

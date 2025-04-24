@@ -8,6 +8,7 @@ from scipy import stats
 import time
 import seaborn as sns
 from scipy.stats import ttest_ind, ttest_rel
+import pickle 
 
 import activity_helper
 
@@ -22,7 +23,7 @@ def find_pkl_files(directory, dimension, R_max, pendindex):
     """"""
     # only select pkl files with desired dimension and R_max
     strname1 = f"D{dimension}_R{R_max}.pkl"
-    strname2 = pendindex
+    strname2 = f"{pendindex}_metadata"
     
     all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
     if "forall" in strname2:
@@ -64,9 +65,7 @@ def analyze_pr(pkl_files):
 
     plt.xticks([0, 1], ['PR for Coregistered Neuron', 'PR for Random Neuron'])
     plt.ylabel('Normalized Participation Ratio')
-    plt.savefig("participation_ratio.png")
-    print("done")
-    time.sleep(1000)
+    plt.savefig("participation_ratio.png", dpi=300)
 
 def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific):
     """
@@ -81,7 +80,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
             directory_path = "./output-all/"
         pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex)
 
-        # analyze_pr(pkl_files)
+        analyze_pr(pkl_files)
         
         coldata, rowdata, somadata = [], [], []
         rmax_quantiles = []
@@ -171,12 +170,14 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                 else:
                     indices = [[0,1,2],[3,4,5]]
 
+        structure_data = []
+        
         for i in range(len(alldata)):
             kk = 0
-            xx, toactratio = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
+            xx, fullconn = alldata[i][:,kk].flatten(), alldata[i][:,2].flatten()
             activity_base = alldata[i][:,3].flatten()
 
-            ppt = toactratio
+            ppt = fullconn
 
             slope, intercept, r_value, p_value, std_err = stats.linregress(xx, ppt)
             # print(f"p_value: {p_value}")
@@ -206,19 +207,22 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
             activity_session_ineul = alldata[i][:,13].flatten()
 
             if showpermute:
-                data = [hypratio, eulratio, toactratio, hypratiopm, eulratiopm]
+                data = [hypratio, eulratio, fullconn, hypratiopm, eulratiopm]
             else:
                 if not showactivity:
-                    data = [hypratio, eulratio, toactratio]
+                    data = [hypratio, eulratio, fullconn]
                 else:
                     if showminimal:
-                        data = [hypratio/activity_base, toactratio/activity_base]
+                        data = [hypratio/activity_base, fullconn/activity_base]
                     else:
-                        data = [hypratio/activity_base, eulratio/activity_base, toactratio/activity_base]
+                        data = [hypratio/activity_base, eulratio/activity_base, fullconn/activity_base]
+                        # print(np.median(data[2]))
+                        if Kselect == 0:
+                            structure_data.append(fullconn)
                         _, p_value = ttest_rel(data[0], data[2], alternative="greater")
 
                         if i == 0:
-                            Krange_data.append([activity_base, hypratio, toactratio])
+                            Krange_data.append([activity_base, hypratio, fullconn])
                         data_session = [activity_session_inhyp/activity_session_base, activity_session_ineul/activity_session_base, activity_session_in/activity_session_base]
                         _, p_value_session = ttest_rel(data_session[0], data_session[2], alternative="greater")
 
@@ -248,9 +252,16 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                 body1.set_alpha(0.7)
                 body2.set_alpha(0.7)
 
+        structure_dict = {
+            "structure_data": structure_data,
+        }
+        
+        if Kselect == 0:
+            with open(f"structure_info/{pendindex}.pkl", "wb") as file:
+                pickle.dump(structure_dict, file)
 
         fig.tight_layout()
-        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png")
+        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
 
         if showpermute:
             names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
@@ -274,7 +285,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                 ax.set_ylabel("Explanation Ratio")
 
         figexp.tight_layout()
-        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png")
+        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
 
         rmax_quantiles = np.array(rmax_quantiles)
         axrmax.plot(rmax_quantiles[:,0], "-o", label="Out")
@@ -282,7 +293,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
         axrmax.legend()
         axrmax.set_xlabel("Trial")
         axrmax.set_ylabel("Rmax Quantile")
-        figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png")
+        figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
 
         np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.npz", alldata=alldata)
 
@@ -293,6 +304,13 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
     for i, label, color in zip(range(3), ["Activity", "HypIn", "In"], c_vals):
         mean_values = [np.mean(Krange_data[j][i]) for j in range(len(Krange_data))]
         std_values = [np.std(Krange_data[j][i]) for j in range(len(Krange_data))]
+        
+        aaa = [Krange_data[j][1] for j in range(len(Krange_data))]
+        bbb = [Krange_data[j][2] for j in range(len(Krange_data))]
+        
+        for tt in range(len(aaa)):
+            _, p_value = ttest_rel(aaa[tt], bbb[tt], alternative="greater")
+            # print(p_value)            
         
         axsacrossK.plot(xxxx, mean_values, "-o", label=label, color=color)
         
@@ -307,7 +325,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
     axsacrossK.set_xticks(ticks=xxxx, labels=x_ticks, rotation=20, ha='right')
     axsacrossK.set_ylabel("Reconstruction Accuracy")
     figacrossK.tight_layout()
-    figacrossK.savefig(f"./Kacross_results/{pendindex}.png")
+    figacrossK.savefig(f"./Kacross_results/{pendindex}.png", dpi=300)
 
     
 def microns_across_scans_rnn(Kselect):
@@ -384,16 +402,16 @@ def microns_across_scans_rnn(Kselect):
         indices = [[0,1,2,6],[3,4,5,6]]
 
     for i in range(len(alldata)):
-        toactratio = alldata[i][:,2].flatten()
+        fullconn = alldata[i][:,2].flatten()
 
         hypratio, eulratio = alldata[i][:,3].flatten(), alldata[i][:,4].flatten()
 
         actratio = alldata[i][:,6].flatten()
 
         if showminimal:
-            data = [list(hypratio/actratio), list(eulratio/actratio), list(toactratio/actratio)]
+            data = [list(hypratio/actratio), list(eulratio/actratio), list(fullconn/actratio)]
         else:
-            data = [list(hypratio), list(eulratio), list(toactratio), list(actratio)]
+            data = [list(hypratio), list(eulratio), list(fullconn), list(actratio)]
 
         positions = [indices[i][j] for j in range(len(indices[i]))]
 
