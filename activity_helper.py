@@ -166,7 +166,7 @@ def reconstruction(W, activity_extraction_extra_trc, K=None, random=False, permu
     """
     if evenodd: # this must be activity correlation
         training_data, testing_data = bin_and_split_data(activity_extraction_extra_trc)
-        W = np.corrcoef(training_data, rowvar=True)
+        W = np.corrcoef(training_data, rowvar=True) # overwrite the <activity> correlation matrix using training data
         np.fill_diagonal(W, 0) # zero-out diagonal
     else:
         testing_data = activity_extraction_extra_trc

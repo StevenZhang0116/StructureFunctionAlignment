@@ -181,7 +181,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     # only do plot once
     old_good_ct = copy.deepcopy(good_ct)
-    if [session_info, scan_info] == [8,5]:
+    if [session_info, scan_info] == [5,3]:
         select_frame = good_ct_all
         print(len(select_frame))
         # delete small group 
@@ -208,7 +208,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         axsgoodct.set_yticklabels(breakpoints_names, rotation=45)
         
         figgoodct.tight_layout()
-        figgoodct.savefig(f"./all_good_connections.png", dpi=300)
+        figgoodct.savefig(f"./all_good_connections.png", dpi=1000)
+        print("save")
 
     save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
     session_ds = xr.open_dataset(save_filename)
@@ -983,8 +984,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                             soma_distances_trc]
         
         assert W_backupcheck.shape == in_corr.shape 
-        input_matrices[1] = W_backupcheck
-        print(f"======== Replace to direct synaptic connection ========")
+        # input_matrices[1] = W_backupcheck
+        # print(f"======== Replace to direct synaptic connection ========")
 
         evenoddlst = [False for _ in range(len(input_matrices))]
         evenoddlst[0] = True
@@ -1156,7 +1157,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             ax.set_xlabel("Window Length")
             ax.set_ylabel("Median Correlation")
 
-        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_dirpsd_actcompareshow_D{embedding_dimension}_R{R_max}.png", dpi=300)
+        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_actcompareshow_D{embedding_dimension}_R{R_max}.png", dpi=300)
 
         metadata["timeuplst"] = [timeup]
         metadata["allk_medians"] = allk_medians        
@@ -1164,7 +1165,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         print(allk_medians)
         
         # extract the metadata
-        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_dirpsd_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
+        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()
