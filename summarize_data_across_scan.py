@@ -4,10 +4,14 @@ import os
 import scipy 
 import time
 
-def summarize_data(ww, cc, ss, index, scan_specific):
-    """
-    """
+import sys 
+sys.path.append("../")
+sys.path.append("../../")
+import helper 
 
+def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1):
+    """
+    """
     assert index in ["in", "out", "activity"]
 
     output_directory = "./zz_data"
@@ -67,16 +71,50 @@ def summarize_data(ww, cc, ss, index, scan_specific):
     print(tag_lst[0:10])
     print(tag_lst.shape)
     print(nonduplicate_connectome.shape)
+    
+    def select_random_columns(A, c, seed=None, return_idx=False):
+        """
+        """
+        if not (0 <= c <= 1):
+            raise ValueError("c must be between 0 and 1")
 
-    scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
+        N, M = A.shape
+        K = int(round((1 - c) * M))
+        if K == 0:
+            raise ValueError("K computed as 0 — decrease c.")
+
+        rng = np.random.default_rng(seed)
+        chosen = rng.choice(M, size=K, replace=False)
+        A_sub = A[:, chosen]
+
+        return (A_sub, chosen) if return_idx else A_sub
+
+    if not perturb:
+        scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
+    else:
+        for cnt in range(10):
+            subsample_connectome = select_random_columns(nonduplicate_connectome, percent)
+            scipy.io.savemat(f"{output_directory}_perturb/{search_string}_perturb_{percent}_{cnt}_connectome_{index}.mat", {"connectome": subsample_connectome, "tag": tag_lst})
+            
     
 if __name__ == "__main__":
-    data = scipy.io.loadmat("./zz_data/noise_normal_cc_count_ss_all_connectome_in.mat")
-    cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
+    # data = scipy.io.loadmat("./zz_data/noise_normal_cc_count_ss_all_connectome_in.mat")
+    # cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
+    # synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
     
-    cnt = 0
-    for tag in data["tag"].flatten():
-        row = cell_table_new[cell_table_new["pt_root_id"] == tag]
-        if row["status_axon"].item() in ("clean", "extended") and row["full_dendrite"].item() == True:
-            cnt += 1
-    print(cnt)
+    # cnt = 0
+    # for tag in data["tag"].flatten():
+    #     row = cell_table_new[cell_table_new["pt_root_id"] == tag]
+    #     # if row["status_axon"].item() in ("clean", "extended") and row["full_dendrite"].item() == True:
+    #     cnt += 1
+    
+    # cell_table_trunc = cell_table_new[cell_table_new["pt_root_id"].isin(data["tag"].flatten())]
+    
+    # conn, tot_psd_sizes, _, _ = helper.create_connectivity_as_whole(cell_table_trunc, synapse_table)
+    # conn_full, tot_psd_sizes, _, _ = helper.create_connectivity_as_whole(cell_table_new, synapse_table)
+    
+    # print(np.mean(conn))
+    # print(np.mean(conn_full))
+    
+    summarize_data("normal", "count", "all", "in", False, perturb=True, percent=0.1)
+    summarize_data("normal", "count", "all", "out", False, perturb=True, percent=0.1)

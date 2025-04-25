@@ -53,7 +53,8 @@ plotstyles = [[c_vals[0], linestyles[0]], \
             [c_vals[4], linestyles[0]], [c_vals[4], linestyles[1]], [c_vals[4], linestyles[2]], [c_vals[4], linestyles[3]]
         ]
 
-def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome, pendindex):
+def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, \
+    scan_specific, downsample_from_connectome, pendindex, perturb):
     """
     """
     # # all session and scan information

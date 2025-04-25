@@ -216,14 +216,10 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         data = [hypratio/activity_base, fullconn/activity_base]
                     else:
                         data = [hypratio/activity_base, eulratio/activity_base, fullconn/activity_base]
-                        print(np.median(hypratio))
-                        print(np.median(eulratio))
-                        print(np.median(fullconn))
-                        print(np.median(activity_base))
-                        print(np.mean(meansess))
-                        if Kselect == 0:
-                            structure_data.append(fullconn)
+                        if Kselect == 0 and i == 0:
+                            structure_data.append([hypratio, fullconn, activity_base])
                         _, p_value = ttest_rel(data[0], data[2], alternative="greater")
+                        print(p_value)
 
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, fullconn])
