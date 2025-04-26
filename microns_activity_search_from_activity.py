@@ -68,7 +68,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     for ss in session_scan:
         metadata, neuron_eul_pref_in, neuron_eul_pref_out = run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
             whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
-            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex)
+            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex, perturb=perturb)
         
         neuron_eul_pref_in_lst.append(neuron_eul_pref_in)
         neuron_eul_pref_out_lst.append(neuron_eul_pref_out)
@@ -90,7 +90,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "out", scan_specific)
 
 def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, \
-    whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome, pendindex):
+    whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome, pendindex, perturb):
     """
     By default, whethernoise == normal, whetherconnectome == count
     Others are considered as compartive/ablation study
@@ -837,17 +837,28 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             # should be used as a control (= 0) in main text
             if downsample_from_connectome:
                 pendindex += "_forall"
-            hyp_name = f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"
-            hypembed_name = f"./mds-results-all/Rmax_{R_max}_D_2_microns__{pendindex}_embed_hypdist.mat"
-            hypembed_data_name = f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"
-            eulembed_name = f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed_eulmds.mat"
-            inindex, outindex = 1, 0
-            output_path = "./output-all"
+                
+            if not perturb: 
+                perturb_repeat = 1
+                hyp_names = [f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"]
+                hypembed_names = [f"./mds-results-all/Rmax_{R_max}_D_2_microns__{pendindex}_embed_hypdist.mat"]
+                hypembed_data_names = [f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"]
+                eulembed_names = [f"./mds-results-all/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_embed_eulmds.mat"]
+                inindex, outindex = 1, 0
+                output_path = "./output-all"
+            else: 
+                perturb_amount = 0.1
+                perturb_repeat = 10
+                
+                hyp_names = [f"./mds-results-all-perturb/Rmax_{R_max}_D_2__{pendindex}_perturb_{perturb_amount}_{n}_embed.mat" for n in range(perturb_repeat)]
+                hypembed_names = [f"./mds-results-all-perturb/Rmax_{R_max}_D_2_microns__{pendindex}_perturb_{perturb_amount}_{n}_embed_hypdist.mat" for n in range(perturb_repeat)]
+                hypembed_data_names = [f"./mds-results-all-perturb/Rmax_{R_max}_D_2__{pendindex}_perturb_{perturb_amount}_{n}_embed.mat" for n in range(perturb_repeat)]
+                eulembed_names = [f"./mds-results-all-perturb/Rmax_{R_max}_D_{embedding_dimension}__{pendindex}_perturb_{perturb_amount}_{n}_embed_eulmds.mat" for n in range(perturb_repeat)]
+                inindex, outindex = 1, 0
+                output_path = "./output-all-perturb"
 
         # load neuron tags
         connectome_by_activity_name = f"./zz_data/{pendindex}_connectome_in.mat"
-        print(connectome_by_activity_name)
-
         alltags = scipy.io.loadmat(connectome_by_activity_name)['tag']
         gt_in = scipy.io.loadmat(connectome_by_activity_name)['connectome']
         corr_gt_in = np.corrcoef(gt_in, rowvar=True)
@@ -859,104 +870,76 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         missing_values = [value for value in good_cells_id if not (alltags == value).any()]
         assert len(missing_values) == 0
 
-        out_dist = scipy.io.loadmat(hyp_name)['Ddists'][0][outindex]
-        out_corr = 1 - out_dist
-        np.fill_diagonal(out_corr, 0)
+        out_dist = [scipy.io.loadmat(hyp_name)['Ddists'][0][outindex] for hyp_name in hyp_names]
+        out_corr = [1 - out_dist_ for out_dist_ in out_dist]
+        for out_corr_ in out_corr: 
+            np.fill_diagonal(out_corr_, 0)
 
-        in_dist = scipy.io.loadmat(hyp_name)['Ddists'][0][inindex]
-        in_corr = 1 - in_dist
-        np.fill_diagonal(in_corr, 0)            
+        in_dist = [scipy.io.loadmat(hyp_name)['Ddists'][0][inindex] for hyp_name in hyp_names]
+        in_corr = [1 - in_dist_ for in_dist_ in in_dist]
+        for in_corr_ in in_corr:
+            np.fill_diagonal(in_corr_, 0)         
 
-        hypembed_connectome_distance_out = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex]  
-        hypembed_connectome_out_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][outindex] 
-        assert hypembed_connectome_distance_out.shape == corr_gt_in.shape
-        rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out, float(R_max))
+        hypembed_connectome_distance_out = [scipy.io.loadmat(hypembed_name)['hyp_dist'][0][outindex] for hypembed_name in hypembed_names]
+        hypembed_connectome_out_pt = [scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][outindex] for hypembed_data_name in hypembed_data_names]
+        assert hypembed_connectome_distance_out[0].shape == corr_gt_in.shape
+        rmax_quantile_out = activity_helper.find_quantile(hypembed_connectome_distance_out[0], float(R_max))
         metadata["rmax_quantile_out"] = rmax_quantile_out
 
         # hypembed_connectome_corr_out = float(R_max) - hypembed_connectome_distance_out
         # hypembed_connectome_corr_out = np.max(hypembed_connectome_distance_out) - hypembed_connectome_distance_out
-        hypembed_connectome_corr_out = activity_helper.scaling_help(hypembed_connectome_distance_out)
-        np.fill_diagonal(hypembed_connectome_corr_out, 0)
+        hypembed_connectome_corr_out = [activity_helper.scaling_help(hypembed_connectome_distance_out_) for hypembed_connectome_distance_out_ in hypembed_connectome_distance_out]
+        for hypembed_connectome_corr_out_ in hypembed_connectome_corr_out:
+            np.fill_diagonal(hypembed_connectome_corr_out_, 0)
 
-        hypembed_connectome_distance_in = scipy.io.loadmat(hypembed_name)['hyp_dist'][0][inindex]
-        hypembed_connectome_in_pt = scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][inindex] 
-        assert hypembed_connectome_distance_in.shape == corr_gt_in.shape
-        rmax_quantile_in = activity_helper.find_quantile(hypembed_connectome_distance_in, float(R_max))
+        hypembed_connectome_distance_in = [scipy.io.loadmat(hypembed_name)['hyp_dist'][0][inindex] for hypembed_name in hypembed_names]
+        hypembed_connectome_in_pt = [scipy.io.loadmat(hypembed_data_name)['hypeulembed'][0][inindex] for hypembed_data_name in hypembed_data_names]
+        assert hypembed_connectome_distance_in[0].shape == corr_gt_in.shape
+        rmax_quantile_in = activity_helper.find_quantile(hypembed_connectome_distance_in[0], float(R_max))
         metadata["rmax_quantile_in"] = rmax_quantile_in
 
         # hypembed_connectome_corr_in = float(R_max) - hypembed_connectome_distance_in
         # hypembed_connectome_corr_in = np.max(hypembed_connectome_distance_in) - hypembed_connectome_distance_in
-        hypembed_connectome_corr_in = activity_helper.scaling_help(hypembed_connectome_distance_in)
-        np.fill_diagonal(hypembed_connectome_corr_in, 0)
+        hypembed_connectome_corr_in = [activity_helper.scaling_help(hypembed_connectome_distance_in_) for hypembed_connectome_distance_in_ in hypembed_connectome_distance_in]
+        for hypembed_connectome_corr_in_ in hypembed_connectome_corr_in:
+            np.fill_diagonal(hypembed_connectome_corr_in_, 0)
 
         # load Euclidean embedding coordinate
         # calcualate the pairwise Euclidean distance afterward   
-        eulembed_connectome_out = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][outindex]
-        eulembed_connectome_distance_out = squareform(pdist(eulembed_connectome_out, metric='euclidean'))
-        assert eulembed_connectome_distance_out.shape == corr_gt_in.shape
-        metadata["rmax_eul_out_distance"] = np.max(eulembed_connectome_distance_out)
+        eulembed_connectome_out = [scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][outindex] for eulembed_name in eulembed_names]
+        eulembed_connectome_distance_out = [squareform(pdist(eulembed_connectome_out_, metric='euclidean')) for eulembed_connectome_out_ in eulembed_connectome_out]
+        assert eulembed_connectome_distance_out[0].shape == corr_gt_in.shape
+        metadata["rmax_eul_out_distance"] = np.max(eulembed_connectome_distance_out[0])
         
         # eulembed_connectome_corr_out = activity_helper.find_value_for_quantile(eulembed_connectome_distance_out, rmax_quantile_out) - eulembed_connectome_distance_out
         # eulembed_connectome_corr_out = np.max(eulembed_connectome_distance_out) - eulembed_connectome_distance_out
-        eulembed_connectome_corr_out = activity_helper.scaling_help(eulembed_connectome_distance_out)
-        np.fill_diagonal(eulembed_connectome_corr_out, 0)
+        eulembed_connectome_corr_out = [activity_helper.scaling_help(eulembed_connectome_distance_out_) for eulembed_connectome_distance_out_ in eulembed_connectome_distance_out]
+        for eulembed_connectome_corr_out_ in eulembed_connectome_corr_out:
+            np.fill_diagonal(eulembed_connectome_corr_out_, 0)
 
-        eulembed_connectome_in = scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][inindex]
-        eulembed_connectome_distance_in = squareform(pdist(eulembed_connectome_in, metric='euclidean'))
-        assert eulembed_connectome_distance_in.shape == corr_gt_in.shape
-        metadata["rmax_eul_in_distance"] = np.max(eulembed_connectome_distance_in)
+        eulembed_connectome_in = [scipy.io.loadmat(eulembed_name)['eulmdsembed'][0][inindex] for eulembed_name in eulembed_names]
+        eulembed_connectome_distance_in = [squareform(pdist(eulembed_connectome_in_, metric='euclidean')) for eulembed_connectome_in_ in eulembed_connectome_in]
+        assert eulembed_connectome_distance_in[0].shape == corr_gt_in.shape
+        metadata["rmax_eul_in_distance"] = np.max(eulembed_connectome_distance_in[0])
         
         # eulembed_connectome_corr_in = activity_helper.find_value_for_quantile(eulembed_connectome_distance_in, rmax_quantile_in) - eulembed_connectome_distance_in
         # eulembed_connectome_corr_in = np.max(eulembed_connectome_distance_in) - eulembed_connectome_distance_in
-        eulembed_connectome_corr_in = activity_helper.scaling_help(eulembed_connectome_distance_in)
-        np.fill_diagonal(eulembed_connectome_corr_in, 0)
+        eulembed_connectome_corr_in = [activity_helper.scaling_help(eulembed_connectome_distance_in_) for eulembed_connectome_distance_in_ in eulembed_connectome_distance_in]
+        for eulembed_connectome_corr_in_ in eulembed_connectome_corr_in:
+            np.fill_diagonal(eulembed_connectome_corr_in_, 0)
 
         # soma distance (baseline)
         soma_distances_trc = activity_helper.find_value_for_quantile(soma_distances_trc, np.mean([rmax_quantile_in, rmax_quantile_out])) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
         
-        # plot the embedding
-        figshowembedding = plt.figure(figsize=(4*2,4*2))
-        axs_showembedding = []
-        
-        data = [
-            (eulembed_connectome_in, "Input Embedding - Eul"),
-            (eulembed_connectome_out, "Output Embedding - Eul"),
-            (hypembed_connectome_in_pt, "Input Embedding - Hyp"),
-            (hypembed_connectome_out_pt, "Output Embedding - Hyp")
-        ]
-
-        is_3d = all(d[0].shape[1] == 3 for d in data)
-
-        if is_3d:
-            for i in range(4):
-                ax = figshowembedding.add_subplot(2, 2, i + 1, projection='3d')
-                axs_showembedding.append(ax)
-        else:
-            axs_showembedding = figshowembedding.subplots(2, 2).flat
-
-        for ax, (embed_data, title) in zip(axs_showembedding, data):
-            if is_3d:
-                ax.scatter(embed_data[:, 0], embed_data[:, 1], embed_data[:, 2], c=embed_data[:, 2], cmap='Blues', alpha=0.1)
-                ax.set_zlabel('Z')  
-            else:
-                hb = ax.hexbin(embed_data[:, 0], embed_data[:, 1], gridsize=50, cmap='viridis')
-                figshowembedding.colorbar(hb, ax=ax, label='Frequency')
-
-            ax.set_title(title)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-
-        figshowembedding.tight_layout()
-        figshowembedding.savefig(f"{output_path}/fromac_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_embedding.png", dpi=300)
 
         if not scan_specific:
-            in_corr = in_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            out_corr = out_corr[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            hypembed_connectome_corr_in = hypembed_connectome_corr_in[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            hypembed_connectome_corr_out = hypembed_connectome_corr_out[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            eulembed_connectome_corr_in = eulembed_connectome_corr_in[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
-            eulembed_connectome_corr_out = eulembed_connectome_corr_out[np.ix_(cell_indices_thisscan, cell_indices_thisscan)]
+            in_corr = [in_corr_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for in_corr_ in in_corr]
+            out_corr = [out_corr_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for out_corr_ in out_corr]
+            hypembed_connectome_corr_in = [hypembed_connectome_corr_in_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for hypembed_connectome_corr_in_ in hypembed_connectome_corr_in]
+            hypembed_connectome_corr_out = [hypembed_connectome_corr_out_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for hypembed_connectome_corr_out_ in hypembed_connectome_corr_out]
+            eulembed_connectome_corr_in = [eulembed_connectome_corr_in_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for eulembed_connectome_corr_in_ in eulembed_connectome_corr_in]
+            eulembed_connectome_corr_out = [eulembed_connectome_corr_out_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for eulembed_connectome_corr_out_ in eulembed_connectome_corr_out]
 
         def plot_hist(ax, data, bins, label, color, alpha=0.5, density=False):
             """
@@ -965,12 +948,12 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # plot the corr distribution
         figdist, axsdist = plt.subplots(1,2,figsize=(4*2,4))
-        plot_hist(axsdist[0], out_corr, bins=50, label='Output', color=c_vals[2])
-        plot_hist(axsdist[0], hypembed_connectome_corr_out, bins=50, label='Hyperbolic Output', color=c_vals[1])
-        plot_hist(axsdist[0], eulembed_connectome_corr_out, bins=50, label='Euclidean Output', color=c_vals[0])
-        plot_hist(axsdist[1], in_corr, bins=50, label='Input', color=c_vals[2])
-        plot_hist(axsdist[1], hypembed_connectome_corr_in, bins=50, label='Hyperbolic Input', color=c_vals[1])
-        plot_hist(axsdist[1], eulembed_connectome_corr_in, bins=50, label='Euclidean Input', color=c_vals[0])
+        plot_hist(axsdist[0], out_corr[0], bins=50, label='Output', color=c_vals[2])
+        plot_hist(axsdist[0], hypembed_connectome_corr_out[0], bins=50, label='Hyperbolic Output', color=c_vals[1])
+        plot_hist(axsdist[0], eulembed_connectome_corr_out[0], bins=50, label='Euclidean Output', color=c_vals[0])
+        plot_hist(axsdist[1], in_corr[0], bins=50, label='Input', color=c_vals[2])
+        plot_hist(axsdist[1], hypembed_connectome_corr_in[0], bins=50, label='Hyperbolic Input', color=c_vals[1])
+        plot_hist(axsdist[1], eulembed_connectome_corr_in[0], bins=50, label='Euclidean Input', color=c_vals[0])
 
         for ax in axsdist:
             ax.legend()
@@ -979,12 +962,20 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         figdist.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_noise_{whethernoise}_cc_{whetherconnectome}_ss_{whethersubsample}_D{embedding_dimension}_R{R_max}_connectome_distance.png", dpi=300)
 
         # actual fitting
-        input_matrices = [activity_correlation_all_trc, \
+        input_matrices = [[activity_correlation_all_trc], \
                             in_corr, hypembed_connectome_corr_in, eulembed_connectome_corr_in, \
                             out_corr, hypembed_connectome_corr_out, eulembed_connectome_corr_out, \
-                            soma_distances_trc]
+                            [soma_distances_trc]
+                        ]
         
-        assert W_backupcheck.shape == in_corr.shape 
+        # populate the matrix -- basically duplicate activity_correlation_all_trc and soma_distances_trc for N times during perturbation 
+        # will not affect the result since np.mean() will return the identical value
+        dd = len(input_matrices[1])
+        for i in (0, -1):
+            one_item = input_matrices[i][0]
+            input_matrices[i] = [one_item] * dd 
+        
+        assert W_backupcheck.shape == in_corr[0].shape 
         # input_matrices[1] = W_backupcheck
         # print(f"======== Replace to direct synaptic connection ========")
 
@@ -998,15 +989,19 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
         # collection of all categories of reconstruction
         all_reconstruction_data = [
-            [[activity_helper.reconstruction(input_matrices[ll], activity_extraction_extra_trc, K, random=False, permute=False, evenodd=evenoddlst[ll])[0] 
-            for ll in range(len(input_matrices))]] 
+            [[activity_helper.reconstruction(input_matrices[ll][h], activity_extraction_extra_trc, K, random=False, permute=False, evenodd=evenoddlst[ll])[0] 
+            for ll in range(len(input_matrices))]
+            for h in range(perturb_repeat)]
             for K in topK_values
         ]
 
         # add permuted data
         repeat_permute = 50
         all_reconstruction_data_permute = [
-            [[activity_helper.reconstruction(input_matrices[ll], activity_extraction_extra_trc, randomK, random=True, permute=False, evenodd=evenoddlst[ll])[0] 
+            # *** perturb remark ***
+            # if not perturb, then 0 (since only element)
+            # if perturb, still 0 (not using the permutation result in any case)
+            [[activity_helper.reconstruction(input_matrices[ll][0], activity_extraction_extra_trc, randomK, random=True, permute=False, evenodd=evenoddlst[ll])[0] 
             for ll in range(len(input_matrices))] 
             for _ in range(repeat_permute)]
             for randomK in topK_values[1:]
@@ -1027,7 +1022,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                     if witer == 0:
                         W = activity_correlation_per_section[stimon_intervals.index(interval)]
                     else:
-                        W = input_matrices[witer]
+                        W = input_matrices[witer][0] # *** perturb remark ***
                     reconstruction_data.append([activity_helper.reconstruction(W, activity_extraction_extra_trc[:,interval[0]:interval[1]], Kvalue, random=False, permute=False)[0] \
                                     for _ in range(topK_repeats[topK_values.index(Kvalue)])])
                 all_reconstruction_data_persession.append(reconstruction_data)
@@ -1076,6 +1071,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             axtest[selects.index(nn)].plot([i / fps_value for i in range(timecut)],activity_extraction_extra[nn,:timecut], \
                         c=c_vals[selects.index(nn)], label='GroundTruth')
             # just use activity reconstruction for now (illustration purpose)
+            
             all_reconstruction = [all_reconstruction_data[0][0][0]]
             
             for j in range(len(all_reconstruction)):
@@ -1125,6 +1121,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                                 my_pearsonr(gt, gt_c2), my_pearsonr(gt, gt_c2_hypembed), my_pearsonr(gt, gt_c2_eulembed), \
                                 my_pearsonr(gt, gt_soma), \
                             ])
+                # average over experiments (repeat) -- perturbation or permutation
                 summ_rr = np.mean(summ_rr, axis=0)
                 summ.append(summ_rr)
 
@@ -1158,7 +1155,9 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             ax.set_xlabel("Window Length")
             ax.set_ylabel("Median Correlation")
 
-        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_actcompareshow_D{embedding_dimension}_R{R_max}.png", dpi=300)
+        perturb_add = f"perturb_{perturb_amount}_" if perturb else ""
+        
+        figactshow.savefig(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_{perturb_add}actcompareshow_D{embedding_dimension}_R{R_max}.png", dpi=300)
 
         metadata["timeuplst"] = [timeup]
         metadata["allk_medians"] = allk_medians        
@@ -1166,7 +1165,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         print(allk_medians)
         
         # extract the metadata
-        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
+        with open(f"{output_path}/fromac_session_{session_info}_scan_{scan_info}_{pendindex}_{perturb_add}metadata_D{embedding_dimension}_R{R_max}.pkl", "wb") as pickle_file:
             pickle.dump(metadata, pickle_file)
 
     session_ds.close()

@@ -9,6 +9,7 @@ sys.path.append("../")
 sys.path.append("../../")
 import helper 
 
+
 def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1):
     """
     """
@@ -92,9 +93,13 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     if not perturb:
         scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
     else:
-        for cnt in range(10):
+        cnt = 0
+        while cnt < 10:
             subsample_connectome = select_random_columns(nonduplicate_connectome, percent)
-            scipy.io.savemat(f"{output_directory}_perturb/{search_string}_perturb_{percent}_{cnt}_connectome_{index}.mat", {"connectome": subsample_connectome, "tag": tag_lst})
+            sanity_check = np.corrcoef(subsample_connectome, rowvar=True)
+            if not np.isnan(sanity_check).any():
+                scipy.io.savemat(f"{output_directory}_perturb/{search_string}_perturb_{percent}_{cnt}_connectome_{index}.mat", {"connectome": subsample_connectome, "tag": tag_lst})
+                cnt += 1
             
     
 if __name__ == "__main__":
@@ -116,5 +121,7 @@ if __name__ == "__main__":
     # print(np.mean(conn))
     # print(np.mean(conn_full))
     
-    summarize_data("normal", "count", "all", "in", False, perturb=True, percent=0.1)
-    summarize_data("normal", "count", "all", "out", False, perturb=True, percent=0.1)
+    summarize_data("normal", "count", "all", "in", False, perturb=True, percent=0.3)
+    summarize_data("normal", "count", "all", "out", False, perturb=True, percent=0.3)
+    
+    # summarize_data("noise", "count", "all", "out", False)

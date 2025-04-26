@@ -19,22 +19,6 @@ plt.style.use(['no-latex'])
 c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 c_vals_l = ['#feb2b2', '#90cdf4', '#9ae6b4', '#d6bcfa', '#fbd38d', '#81e6d9', '#e2e8f0', '#fbb6ce', '#faf089',]
 
-def find_pkl_files(directory, dimension, R_max, pendindex):
-    """"""
-    # only select pkl files with desired dimension and R_max
-    strname1 = f"D{dimension}_R{R_max}.pkl"
-    strname2 = f"{pendindex}_metadata"
-    
-    all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
-    if "forall" in strname2:
-        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
-    else:
-        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f) and "forall" not in os.path.basename(f)]
-
-    assert len(matching_files) > 10 and len(matching_files) <= 12
-    
-    return matching_files
-
 def analyze_pr(pkl_files):
     """"""
     alldata = []
@@ -67,7 +51,26 @@ def analyze_pr(pkl_files):
     plt.ylabel('Normalized Participation Ratio')
     plt.savefig("participation_ratio.png", dpi=300)
 
-def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific):
+def find_pkl_files(directory, dimension, R_max, pendindex, perturb, perturb_value):
+    """"""
+    # only select pkl files with desired dimension and R_max
+    strname1 = f"D{dimension}_R{R_max}.pkl"
+    strname2 = f"{pendindex}_metadata"
+    
+    if perturb:
+        strname2 = f"{pendindex}_perturb_{perturb_value}_metadata"
+    
+    all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
+    if "forall" in strname2:
+        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f)]
+    else:
+        matching_files = [f for f in all_pkl_files if strname1 in os.path.basename(f) and strname2 in os.path.basename(f) and "forall" not in os.path.basename(f)]
+
+    assert len(matching_files) > 10 and len(matching_files) <= 12
+    
+    return matching_files
+
+def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific, perturb):
     """
     """
     print(R_max)
@@ -77,8 +80,15 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
         if scan_specific:
             directory_path = "./output/"
         else:
-            directory_path = "./output-all/"
-        pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex)
+            if not perturb: 
+                directory_path = "./output-all/"
+            else:
+                directory_path = "./output-all-perturb/"
+        
+        perturb_value = 0.1 if perturb else None 
+        perturb_add_string = f"_perturb_{perturb_value}" if perturb else ""
+        
+        pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex, perturb, perturb_value)
 
         analyze_pr(pkl_files)
         
@@ -219,7 +229,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         if Kselect == 0 and i == 0:
                             structure_data.append([hypratio, fullconn, activity_base])
                         _, p_value = ttest_rel(data[0], data[2], alternative="greater")
-                        print(p_value)
+                        print(np.median(hypratio/activity_base))
 
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, fullconn])
@@ -257,11 +267,11 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
         }
         
         if Kselect == 0:
-            with open(f"structure_info/{pendindex}.pkl", "wb") as file:
+            with open(f"structure_info/{pendindex}{perturb_add_string}.pkl", "wb") as file:
                 pickle.dump(structure_dict, file)
 
         fig.tight_layout()
-        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
+        fig.savefig(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}{perturb_add_string}.png", dpi=300)
 
         if showpermute:
             names = ["Hyp2In", "Eul2In", "In2Act", "Hyp2pmIn", "Eul2pmIn", "Hyp2Out", "Eul2Out", "Out2Act", "Hyp2pmOut", "Eul2pmOut"]
@@ -285,7 +295,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                 ax.set_ylabel("Explanation Ratio")
 
         figexp.tight_layout()
-        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
+        figexp.savefig(f"{directory_path}zz_overall_exp_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}{perturb_add_string}.png", dpi=300)
 
         rmax_quantiles = np.array(rmax_quantiles)
         axrmax.plot(rmax_quantiles[:,0], "-o", label="Out")
@@ -293,9 +303,9 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
         axrmax.legend()
         axrmax.set_xlabel("Trial")
         axrmax.set_ylabel("Rmax Quantile")
-        figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.png", dpi=300)
+        figrmax.savefig(f"./output/zz_overall_rmax_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}{perturb_add_string}.png", dpi=300)
 
-        np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}.npz", alldata=alldata)
+        np.savez(f"{directory_path}zz_overall_D{dimension}_R{R_max}_T{timeselect}_K{Kselect}_{pendindex}{perturb_add_string}.npz", alldata=alldata)
 
     figacrossK, axsacrossK = plt.subplots(figsize=(4,4))
     x_ticks = ["All", "Top 50%", "Top 20%", "Random 50%", "Random 20%"]
@@ -325,7 +335,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
     axsacrossK.set_xticks(ticks=xxxx, labels=x_ticks, rotation=20, ha='right')
     axsacrossK.set_ylabel("Reconstruction Accuracy")
     figacrossK.tight_layout()
-    figacrossK.savefig(f"./Kacross_results/{pendindex}.png", dpi=300)
+    figacrossK.savefig(f"./Kacross_results/{pendindex}{perturb_add_string}.png", dpi=300)
 
     
 def microns_across_scans_rnn(Kselect):
