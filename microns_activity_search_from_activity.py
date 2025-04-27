@@ -54,7 +54,7 @@ plotstyles = [[c_vals[0], linestyles[0]], \
         ]
 
 def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectome, whethersubsample, \
-    scan_specific, downsample_from_connectome, pendindex, perturb):
+    scan_specific, downsample_from_connectome, pendindex, perturb, perturb_amount):
     """
     """
     # # all session and scan information
@@ -68,7 +68,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     for ss in session_scan:
         metadata, neuron_eul_pref_in, neuron_eul_pref_out = run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
             whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
-            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex, perturb=perturb)
+            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex, perturb=perturb, perturb_amount=perturb_amount)
         
         neuron_eul_pref_in_lst.append(neuron_eul_pref_in)
         neuron_eul_pref_out_lst.append(neuron_eul_pref_out)
@@ -90,7 +90,7 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
         summarize_data_across_scan.summarize_data(whethernoise, whetherconnectome, whethersubsample, "out", scan_specific)
 
 def run(session_info, scan_info, for_construction, R_max, embedding_dimension, raw_data, \
-    whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome, pendindex, perturb):
+    whethernoise, whetherconnectome, whethersubsample, scan_specific, downsample_from_connectome, pendindex, perturb, perturb_amount):
     """
     By default, whethernoise == normal, whetherconnectome == count
     Others are considered as compartive/ablation study
@@ -847,7 +847,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 inindex, outindex = 1, 0
                 output_path = "./output-all"
             else: 
-                perturb_amount = 0.1
+                print(f"perturb_amount: {perturb_amount}")
                 perturb_repeat = 10
                 
                 hyp_names = [f"./mds-results-all-perturb/Rmax_{R_max}_D_2__{pendindex}_perturb_{perturb_amount}_{n}_embed.mat" for n in range(perturb_repeat)]

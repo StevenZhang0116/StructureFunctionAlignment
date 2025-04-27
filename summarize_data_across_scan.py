@@ -4,6 +4,9 @@ import os
 import scipy 
 import time
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 import sys 
 sys.path.append("../")
 sys.path.append("../../")
@@ -93,13 +96,21 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     if not perturb:
         scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
     else:
-        cnt = 0
+        cnt, allcnt = 0, 0
         while cnt < 10:
             subsample_connectome = select_random_columns(nonduplicate_connectome, percent)
+            base_corr = np.corrcoef(nonduplicate_connectome, rowvar=True)
             sanity_check = np.corrcoef(subsample_connectome, rowvar=True)
+            allcnt += 1
             if not np.isnan(sanity_check).any():
+                figr, axsr = plt.subplots(1, 2, figsize=(4*2, 4))
+                sns.heatmap(base_corr, ax=axsr[0], cmap="coolwarm", cbar=True, square=True)
+                sns.heatmap(sanity_check, ax=axsr[1], cmap="coolwarm", cbar=True, square=True)
+                figr.tight_layout()
+                figr.savefig(f"zz_perturb_{percent}_{index}.png")
                 scipy.io.savemat(f"{output_directory}_perturb/{search_string}_perturb_{percent}_{cnt}_connectome_{index}.mat", {"connectome": subsample_connectome, "tag": tag_lst})
                 cnt += 1
+        print(f"{cnt}/{allcnt} perturbations were successful.")
             
     
 if __name__ == "__main__":

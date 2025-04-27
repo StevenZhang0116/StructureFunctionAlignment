@@ -51,14 +51,14 @@ def analyze_pr(pkl_files):
     plt.ylabel('Normalized Participation Ratio')
     plt.savefig("participation_ratio.png", dpi=300)
 
-def find_pkl_files(directory, dimension, R_max, pendindex, perturb, perturb_value):
+def find_pkl_files(directory, dimension, R_max, pendindex, perturb, perturb_amount):
     """"""
     # only select pkl files with desired dimension and R_max
     strname1 = f"D{dimension}_R{R_max}.pkl"
     strname2 = f"{pendindex}_metadata"
     
     if perturb:
-        strname2 = f"{pendindex}_perturb_{perturb_value}_metadata"
+        strname2 = f"{pendindex}_perturb_{perturb_amount}_metadata"
     
     all_pkl_files = glob.glob(os.path.join(directory, "**", "*.pkl"), recursive=True)
     if "forall" in strname2:
@@ -70,7 +70,7 @@ def find_pkl_files(directory, dimension, R_max, pendindex, perturb, perturb_valu
     
     return matching_files
 
-def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific, perturb):
+def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific, perturb, perturb_amount):
     """
     """
     print(R_max)
@@ -85,10 +85,11 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
             else:
                 directory_path = "./output-all-perturb/"
         
-        perturb_value = 0.1 if perturb else None 
-        perturb_add_string = f"_perturb_{perturb_value}" if perturb else ""
+        if not perturb:
+            perturb_amount = 0
+        perturb_add_string = f"_perturb_{perturb_amount}" if perturb else ""
         
-        pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex, perturb, perturb_value)
+        pkl_files = find_pkl_files(directory_path, dimension, R_max, pendindex, perturb, perturb_amount)
 
         analyze_pr(pkl_files)
         
@@ -229,7 +230,8 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         if Kselect == 0 and i == 0:
                             structure_data.append([hypratio, fullconn, activity_base])
                         _, p_value = ttest_rel(data[0], data[2], alternative="greater")
-                        print(np.median(hypratio/activity_base))
+                        
+                        print(np.median(fullconn))
 
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, fullconn])
