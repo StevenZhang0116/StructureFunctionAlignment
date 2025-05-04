@@ -182,6 +182,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                     indices = [[0,1,2],[3,4,5]]
 
         structure_data = []
+        structure_data_out = [] 
         
         for i in range(len(alldata)):
             kk = 0
@@ -229,9 +230,9 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
                         data = [hypratio/activity_base, eulratio/activity_base, fullconn/activity_base]
                         if Kselect == 0 and i == 0:
                             structure_data.append([hypratio, fullconn, activity_base])
+                        if Kselect == 0 and i == 1:
+                            structure_data_out.append([hypratio, fullconn, activity_base])
                         _, p_value = ttest_rel(data[0], data[2], alternative="greater")
-                        
-                        print(np.median(fullconn))
 
                         if i == 0:
                             Krange_data.append([activity_base, hypratio, fullconn])
@@ -266,6 +267,7 @@ def microns_across_scans(R_max, dimension, Kselect_lst, pendindex, scan_specific
 
         structure_dict = {
             "structure_data": structure_data,
+            "structure_data_out": structure_data_out
         }
         
         if Kselect == 0:
