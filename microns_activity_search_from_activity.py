@@ -179,6 +179,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     goot_ct_axons_pt_rootids = good_ct_axons["pt_root_id"].to_numpy()
 
     good_ct_indices = good_ct_all.index.tolist()
+    print(len(good_ct_indices))
+    time.sleep(1000)
 
     # only do plot once
     old_good_ct = copy.deepcopy(good_ct)
@@ -931,7 +933,6 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         # soma distance (baseline)
         soma_distances_trc = activity_helper.find_value_for_quantile(soma_distances_trc, np.mean([rmax_quantile_in, rmax_quantile_out])) - soma_distances_trc
         np.fill_diagonal(soma_distances_trc, 0)
-        
 
         if not scan_specific:
             in_corr = [in_corr_[np.ix_(cell_indices_thisscan, cell_indices_thisscan)] for in_corr_ in in_corr]

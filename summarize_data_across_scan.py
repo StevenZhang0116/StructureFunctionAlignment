@@ -4,8 +4,13 @@ import os
 import scipy 
 import time
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt 
+import scienceplots
+plt.style.use('science')
+plt.style.use(['no-latex'])
+
 import seaborn as sns
+from sklearn.manifold import MDS   
 
 import sys 
 sys.path.append("../")
@@ -214,6 +219,8 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     """
     """
     assert index in ["in", "out", "activity"]
+    
+    cell_table = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
 
     output_directory = "./zz_data"
 
@@ -272,11 +279,101 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     print(tag_lst[0:10])
     print(tag_lst.shape)
     print(nonduplicate_connectome.shape)
+    
+    # analyze the spatial bias for these neurons
+    # 497 neurons in total for activity recontruction (bottleneck)
+    tags = np.asarray(tag_lst).ravel()
+    bottleneck = cell_table[cell_table["pt_root_id"].isin(tags)]
+    
+    xxx = bottleneck["pt_position_x_trafo"].tolist()
+    yyy = bottleneck["pt_position_z_trafo"].tolist()
+    zzz = bottleneck["pt_position_y_trafo"].tolist()
+    xxx = [xx / 1000 for xx in xxx]
+    yyy = [yy / 1000 for yy in yyy]
+    zzz = [zz / 1000 for zz in zzz]
+    
+    # spatial distribution
+    fig = plt.figure(figsize=(8,8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    sc = ax.scatter(
+        xxx, yyy, zzz, 
+        c=zzz,             # color by depth (z) for nice contrast
+        cmap="viridis",    # smooth colormap
+        s=40,              # point size
+        alpha=0.8,         # transparency
+        edgecolors="k",    # black edges for clarity
+        linewidth=0.3
+    )
+    cbar = plt.colorbar(sc, ax=ax, shrink=0.6, pad=0.1)
+    cbar.set_label("Cortical Depth (z, microns)")
+    ax.set_xlabel("x (microns)")
+    ax.set_ylabel("y (microns)")
+    ax.set_zlabel("z (microns)")
+    ax.view_init(elev=25, azim=35)
+    fig.tight_layout()
+    fig.savefig("zz_bottleneck_spatial.png", dpi=300)
+    
+    # histogram of cortical depth
+    fig, ax = plt.subplots(figsize=(8,5))
+
+    ax.hist(
+        zzz,
+        bins=30,         
+        color="skyblue",
+        edgecolor="k",
+        alpha=0.8
+    )
+
+    ax.set_xlabel("Cortical Depth (z, microns)")
+    ax.set_ylabel("Count")
+    ax.set_title("Distribution of Cortical Depth (z)")
+    fig.tight_layout()
+    fig.savefig("zz_histogram_cortical_depth.png", dpi=300)
+    print("done")
+
+    time.sleep(10000)
+    
+    
+    # plot for Euclidean MDS
+    nonduplicate_connectome_corr = np.corrcoef(nonduplicate_connectome, rowvar=True)
+    mds = MDS(n_components=2, dissimilarity='precomputed', metric=False)     
+    nonduplicate_connectome_coordinate = mds.fit_transform(1 - nonduplicate_connectome_corr)
+    
+    plt.rcParams.update({
+        "axes.spines.right": False,
+        "axes.spines.top":   False,
+        "axes.labelsize":   13,
+        "xtick.labelsize":  11,
+        "ytick.labelsize":  11,
+    })
+    
+    figmds, axmds = plt.subplots(figsize=(4.0, 4.0))
+    
+    hb = axmds.hexbin(nonduplicate_connectome_coordinate[:, 0],
+                    nonduplicate_connectome_coordinate[:, 1],
+                    gridsize=70,          # resolution of the bins
+                    mincnt=1,             # ignore empty hexes
+                    # bins='log',           # log‑scaled counts
+                    cmap='coolwarm',         # perceptually uniform colormap
+                    linewidths=0)         # no hex borders
+    
+    axmds.set_xlabel("MDS 1")
+    axmds.set_ylabel("MDS 2")
+    axmds.set_aspect('equal', adjustable='datalim')
+    # axmds.set_title("MDS embedding of connectome", pad=10)
+
+    cb = figmds.colorbar(hb, ax=axmds)
+    cb.ax.tick_params(labelsize=10)
+
+    figmds.tight_layout(pad=0.5)
+    figmds.savefig(f"zz_mds_{search_string}_{index}.png", dpi=300)
 
     if not perturb:
         scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
     else:
         print(f"Sparsity: {np.count_nonzero(nonduplicate_connectome)/(nonduplicate_connectome.shape[0]*nonduplicate_connectome.shape[1])}")
+        time.sleep(1000)
         cnt, allcnt = 0, 0
         while cnt < 10:
             # subsample_connectome = select_random_columns(nonduplicate_connectome, percent)
@@ -319,27 +416,27 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
             
     
 if __name__ == "__main__":
-    data = scipy.io.loadmat("./zz_data/noise_normal_cc_count_ss_all_connectome_in.mat")
-    cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
-    synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
+    # data = scipy.io.loadmat("./zz_data/noise_normal_cc_count_ss_all_connectome_in.mat")
+    # cell_table_new = pd.read_feather("../microns_cell_tables/sven/microns_cell_annos_CV_240827.feather")
+    # synapse_table = pd.read_feather("../microns_cell_tables/sven/synapses_minnie65_phase3_v1_943_combined_incl_trafo_240522.feather")
     
-    matching_axon = cell_table_new[(cell_table_new["status_axon"].isin(["extended", "clean"])) & 
-        (cell_table_new["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"]))
-    ]
+    # matching_axon = cell_table_new[(cell_table_new["status_axon"].isin(["extended", "clean"])) & 
+    #     (cell_table_new["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"]))
+    # ]
 
-    matching_dendrite = cell_table_new[(cell_table_new["full_dendrite"] == True) & 
-        (cell_table_new["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"]))
-    ]
+    # matching_dendrite = cell_table_new[(cell_table_new["full_dendrite"] == True) & 
+    #     (cell_table_new["classification_system"].isin(["excitatory_neuron", "inhibitory_neuron"]))
+    # ]
     
-    print(matching_axon["layer"].value_counts())
-    print(matching_axon["region"].value_counts())
-    print(matching_dendrite["layer"].value_counts())
-    print(matching_dendrite["region"].value_counts())
+    # print(matching_axon["layer"].value_counts())
+    # print(matching_axon["region"].value_counts())
+    # print(matching_dendrite["layer"].value_counts())
+    # print(matching_dendrite["region"].value_counts())
     
-    tags = data["tag"].flatten() 
-    all_rows_df = cell_table_new[cell_table_new["pt_root_id"].isin(tags)].copy()
-    print(all_rows_df["layer"].value_counts())
-    print(all_rows_df["region"].value_counts())
+    # tags = data["tag"].flatten() 
+    # all_rows_df = cell_table_new[cell_table_new["pt_root_id"].isin(tags)].copy()
+    # print(all_rows_df["layer"].value_counts())
+    # print(all_rows_df["region"].value_counts())
 
             
     # print(cnt)
@@ -352,6 +449,6 @@ if __name__ == "__main__":
     # print(np.mean(conn))
     # print(np.mean(conn_full))
     
-    # summarize_data("normal", "count", "all", "in", False, perturb=False, percent=0.2)
-    # summarize_data("normal", "count", "all", "out", False, perturb=False, percent=0.2)
+    # summarize_data("normal", "count", "all", "in", False, perturb=True, percent=0.2)
+    summarize_data("normal", "count", "all", "out", False, perturb=True, percent=0.2)
     

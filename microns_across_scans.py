@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 import time
 import seaborn as sns
-from scipy.stats import ttest_ind, ttest_rel
+from scipy.stats import ttest_rel
 import pickle 
 
 import activity_helper
