@@ -179,9 +179,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     goot_ct_axons_pt_rootids = good_ct_axons["pt_root_id"].to_numpy()
 
     good_ct_indices = good_ct_all.index.tolist()
-    print(len(good_ct_indices))
-    time.sleep(1000)
-
+    
     # only do plot once
     old_good_ct = copy.deepcopy(good_ct)
     if [session_info, scan_info] == [5,3]:
@@ -233,6 +231,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # all the activity information within this scan
     activity_database = session_ds["activity"].values
 
+    oracle_scores = []
+
     for index, pt_root_id in enumerate(cell_table["pt_root_id"]):
         # Dec 5th Update: only consider neurons that 1) functionally coregistered; 2) structurally confident (far more strict on axons than dendrites)
         # previously we don't have 2) in the consideration
@@ -242,9 +242,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
             cell_row = cell_table[cell_table["pt_root_id"] == pt_root_id]
             # only select neurons that are excitatory 
             if cell_row["classification_system"].item() in ["excitatory_neuron"]:
-
                 selected_neurons.append(index)
-                # count += 1
                 # Print the corresponding row in prf_coreg
                 matching_row = prf_coreg[prf_coreg["pt_root_id"] == pt_root_id]
 
@@ -261,7 +259,11 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
                 activity_extraction.append(session_ds["fluorescence"].values[unit_id-1,:])
                 activity_extraction_extra.append(session_ds["activity"].values[unit_id-1,:])
+                oracle_scores.append(session_ds["oracle_score"].values[unit_id-1])
 
+    print(oracle_scores)
+    time.sleep(1000)
+    
     assert len(selected_neurons) == len(activity_extraction)
     print(len(selected_neurons))
 

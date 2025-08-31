@@ -3,6 +3,7 @@ import pandas as pd
 import os 
 import scipy 
 import time
+import xarray as xr
 
 import matplotlib.pyplot as plt 
 import scienceplots
@@ -16,6 +17,8 @@ import sys
 sys.path.append("../")
 sys.path.append("../../")
 import helper 
+
+c_vals = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#dd6b20', '#319795', '#718096', '#d53f8c', '#d69e2e', '#ff6347', '#4682b4', '#32cd32', '#9932cc', '#ffa500']
 
 def select_random_columns(A, c, seed=None, return_idx=False):
     """
@@ -331,10 +334,47 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     fig.tight_layout()
     fig.savefig("zz_histogram_cortical_depth.png", dpi=300)
     print("done")
+    
+    # register oracle score
+    tag_oracle = {}
+    tag_all = []
+    session_scan = [[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4],[8,5],[4,7],[6,6],]
+    for (session_info, scan_info) in session_scan:
+        prf_coreg = pd.read_csv("./microns/prf_coreg.csv")
+        prf_coreg = prf_coreg[(prf_coreg["session"] == session_info) & (prf_coreg["scan_idx"] == scan_info)]
 
-    time.sleep(10000)
+        save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
+        session_ds = xr.open_dataset(save_filename)
+        tag_all.extend(session_ds["oracle_score"].values)
+        for tag in tag_lst:
+            tag = tag[0]
+            matching_row = prf_coreg[prf_coreg["pt_root_id"] == tag]
+            if len(matching_row) > 0: # if there is a match
+                if len(matching_row) > 1:
+                    matching_row = matching_row.iloc[0]
+                unit_id, field = matching_row["unit_id"].item(), matching_row["field"].item()
+                # unit_id ordered sequentially
+                check_unitid = session_ds["unit_id"].values[unit_id-1]
+                check_field = session_ds["field"].values[unit_id-1]
+                assert unit_id == check_unitid
+                assert field == check_field
+                orc_score = session_ds["oracle_score"].values[unit_id-1]
+                tag_oracle[tag] = orc_score
+
+    select_oracle = list(tag_oracle.values())
     
-    
+    figorchist, axsorchist = plt.subplots(1,1,figsize=(5,5))
+    axsorchist.hist(select_oracle, bins=50, color=c_vals[0], alpha=0.5, density=True, label="Targeted Neurons")
+    axsorchist.hist(tag_all, bins=50, color=c_vals[1], alpha=0.5, density=True, label="All Neurons")
+    axsorchist.set_xlabel("Oracle Score")
+    axsorchist.set_ylabel("Probability")
+    axsorchist.set_title("Distribution of Oracle Scores")
+    axsorchist.legend()
+    figorchist.tight_layout()
+    figorchist.savefig("zz_histogram_oracle_scores.png", dpi=300)
+    print("done")
+    time.sleep(1000)
+
     # plot for Euclidean MDS
     nonduplicate_connectome_corr = np.corrcoef(nonduplicate_connectome, rowvar=True)
     mds = MDS(n_components=2, dissimilarity='precomputed', metric=False)     
