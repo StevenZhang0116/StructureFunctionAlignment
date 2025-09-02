@@ -4,6 +4,7 @@ import os
 import scipy 
 import time
 import xarray as xr
+import sys
 
 import matplotlib.pyplot as plt 
 import scienceplots
@@ -217,6 +218,14 @@ def check_dale(matrix, mode="in"):
     elif mode == "out":
         for i in range(matrix.shape[0]):
             assert set(matrix[i,:]) == {-1, 0} or set(matrix[i,:]) == {1, 0} or set(matrix[i,:]) == {0}
+            
+def valid_stats(seq):
+    """Return count and proportion of finite values (not NaN/Inf)."""
+    a = np.asarray(seq, dtype=float)
+    mask = np.isfinite(a)
+    count_valid = int(mask.sum())
+    proportion_valid = count_valid / a.size if a.size else float("nan")
+    return count_valid, proportion_valid
 
 def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1):
     """
@@ -315,7 +324,7 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     ax.set_zlabel("z (microns)")
     ax.view_init(elev=25, azim=35)
     fig.tight_layout()
-    fig.savefig("zz_bottleneck_spatial.png", dpi=300)
+    fig.savefig("./figures/zz_bottleneck_spatial.png", dpi=300)
     
     # histogram of cortical depth
     fig, ax = plt.subplots(figsize=(8,5))
@@ -332,12 +341,11 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     ax.set_ylabel("Count")
     ax.set_title("Distribution of Cortical Depth (z)")
     fig.tight_layout()
-    fig.savefig("zz_histogram_cortical_depth.png", dpi=300)
-    print("done")
+    fig.savefig("./figures/zz_histogram_cortical_depth.png", dpi=300)
     
     # register oracle score
     tag_oracle = {}
-    tag_all = []
+    tag_all_oracle = {}
     session_scan = [[5,3],[5,6],[5,7],[6,2],[7,3],[7,5],[9,3],[9,4],[6,4],[8,5],[4,7],[6,6],]
     for (session_info, scan_info) in session_scan:
         prf_coreg = pd.read_csv("./microns/prf_coreg.csv")
@@ -345,7 +353,11 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
 
         save_filename = f"./microns/functional_xr/functional_session_{session_info}_scan_{scan_info}.nc"
         session_ds = xr.open_dataset(save_filename)
-        tag_all.extend(session_ds["oracle_score"].values)
+        for ni in range(len(session_ds["unit_id"].values)):
+            if not session_ds["unit_id"].values[ni] in tag_all_oracle.keys():
+                tag_all_oracle[session_ds["unit_id"].values[ni]] = [session_ds["oracle_score"].values[ni]]
+            else:
+                tag_all_oracle[session_ds["unit_id"].values[ni]].append(session_ds["oracle_score"].values[ni])
         for tag in tag_lst:
             tag = tag[0]
             matching_row = prf_coreg[prf_coreg["pt_root_id"] == tag]
@@ -359,21 +371,34 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
                 assert unit_id == check_unitid
                 assert field == check_field
                 orc_score = session_ds["oracle_score"].values[unit_id-1]
-                tag_oracle[tag] = orc_score
+                if tag in tag_oracle.keys():
+                    tag_oracle[tag].append(orc_score)
+                else:
+                    tag_oracle[tag] = [orc_score]
 
+    tag_oracle = {float(k): float(np.nanmean(v)) for k, v in tag_oracle.items()}
+    tag_all_oracle = {float(k): float(np.nanmean(v)) for k, v in tag_all_oracle.items()}
     select_oracle = list(tag_oracle.values())
+    tag_all_oracle = list(tag_all_oracle.values())
+
+    select_valid = valid_stats(select_oracle)[0]
+    select_all = len(select_oracle)
+    all_valid = valid_stats(tag_all_oracle)[0]
+    all_all = len(tag_all_oracle)
     
     figorchist, axsorchist = plt.subplots(1,1,figsize=(5,5))
-    axsorchist.hist(select_oracle, bins=50, color=c_vals[0], alpha=0.5, density=True, label="Targeted Neurons")
-    axsorchist.hist(tag_all, bins=50, color=c_vals[1], alpha=0.5, density=True, label="All Neurons")
+    axsorchist.hist(select_oracle, bins=50, color=c_vals[0], alpha=0.5, density=True, label=f"Targeted Neurons: {select_valid}/{select_all}: {select_valid/select_all:.1%} valid")
+    axsorchist.hist(tag_all_oracle, bins=50, color=c_vals[1], alpha=0.5, density=True, label=f"All Neurons: {all_valid}/{all_all}: {all_valid/all_all:.1%} valid")
+    axsorchist.axvline(np.nanmedian(select_oracle), color=c_vals[0], linestyle='dashed', linewidth=1)
+    axsorchist.axvline(np.nanmedian(tag_all_oracle), color=c_vals[1], linestyle='dashed', linewidth=1)
+    print(np.nanmedian(select_oracle), np.nanmedian(tag_all_oracle))
     axsorchist.set_xlabel("Oracle Score")
     axsorchist.set_ylabel("Probability")
     axsorchist.set_title("Distribution of Oracle Scores")
-    axsorchist.legend()
+    axsorchist.legend(fontsize=8)
     figorchist.tight_layout()
-    figorchist.savefig("zz_histogram_oracle_scores.png", dpi=300)
-    print("done")
-    time.sleep(1000)
+    figorchist.savefig("./figures/zz_histogram_oracle_scores.png", dpi=300)
+    sys.exit()
 
     # plot for Euclidean MDS
     nonduplicate_connectome_corr = np.corrcoef(nonduplicate_connectome, rowvar=True)
@@ -407,7 +432,7 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
     cb.ax.tick_params(labelsize=10)
 
     figmds.tight_layout(pad=0.5)
-    figmds.savefig(f"zz_mds_{search_string}_{index}.png", dpi=300)
+    figmds.savefig(f"./figures/zz_mds_{search_string}_{index}.png", dpi=300)
 
     if not perturb:
         scipy.io.savemat(f"{output_directory}/{search_string}_connectome_{index}.mat", {"connectome": nonduplicate_connectome, "tag": tag_lst})
@@ -448,7 +473,7 @@ def summarize_data(ww, cc, ss, index, scan_specific, perturb=False, percent=0.1)
                 sns.heatmap(base_corr, ax=axsr[0], cmap="coolwarm", cbar=True, square=True)
                 sns.heatmap(sanity_check, ax=axsr[1], cmap="coolwarm", cbar=True, square=True)
                 figr.tight_layout()
-                figr.savefig(f"zz_perturb{perturb_index}_{percent}_{index}.png", dpi=1000)
+                figr.savefig(f"./figures/zz_perturb{perturb_index}_{percent}_{index}.png", dpi=1000)
                 scipy.io.savemat(f"{output_directory}_perturb/{search_string}_perturb{perturb_index}_{percent}_{cnt}_connectome_{index}.mat", {"connectome": subsample_connectome, "tag": tag_lst})
                 cnt += 1
                 

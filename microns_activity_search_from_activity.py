@@ -66,12 +66,15 @@ def all_run(R_max, embedding_dimension, raw_data, whethernoise, whetherconnectom
     neuron_eul_pref_in_lst = []
     neuron_eul_pref_out_lst = []
     for ss in session_scan:
-        metadata, neuron_eul_pref_in, neuron_eul_pref_out = run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
-            whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
-            scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex, perturb=perturb, perturb_amount=perturb_amount)
-        
-        neuron_eul_pref_in_lst.append(neuron_eul_pref_in)
-        neuron_eul_pref_out_lst.append(neuron_eul_pref_out)
+        try: 
+            metadata, neuron_eul_pref_in, neuron_eul_pref_out = run(ss[0], ss[1], for_construction, R_max=R_max, embedding_dimension=embedding_dimension, raw_data=raw_data, \
+                whethernoise=whethernoise, whetherconnectome=whetherconnectome, whethersubsample=whethersubsample, \
+                scan_specific=scan_specific, downsample_from_connectome=downsample_from_connectome, pendindex=pendindex, perturb=perturb, perturb_amount=perturb_amount)
+            
+            neuron_eul_pref_in_lst.append(neuron_eul_pref_in)
+            neuron_eul_pref_out_lst.append(neuron_eul_pref_out)
+        except Exception as e:
+            print(f"Error occurred while processing session {ss[0]}, scan {ss[1]}: {e}")
 
     merged_perf_in = activity_helper.merge_dicts_list(neuron_eul_pref_in_lst)
     merged_perf_out = activity_helper.merge_dicts_list(neuron_eul_pref_out_lst)
@@ -260,9 +263,8 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 activity_extraction.append(session_ds["fluorescence"].values[unit_id-1,:])
                 activity_extraction_extra.append(session_ds["activity"].values[unit_id-1,:])
                 oracle_scores.append(session_ds["oracle_score"].values[unit_id-1])
-
-    print(oracle_scores)
-    time.sleep(1000)
+                
+    print(f"oracle_scores: {oracle_scores[:10]}")
     
     assert len(selected_neurons) == len(activity_extraction)
     print(len(selected_neurons))
@@ -330,7 +332,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
 
     metadata["gt_median_corr"] = gt_median_corr
     metadata["gt_mean_corr"] = gt_mean_corr
-    print(f"gt_median_corr: {gt_median_corr}; gt_mean_corr: {gt_mean_corr}")
+    print(f"gt_median_corr: {gt_median_corr:.2f}; gt_mean_corr: {gt_mean_corr:.2f}")
 
     binary_count, psd_count, syn_count, _ = helper.create_connectivity_as_whole(cell_table, synapse_table)
 
@@ -482,7 +484,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
         off_diagonal = relation_matrix[i != j]  
 
         p_value = activity_helper.stats_test(diagonal, off_diagonal)
-        print(f"P-value: {p_value}")
+        print(f"P-value: {p_value:2f}")
 
         p_values_all.append(p_value)
 
@@ -539,6 +541,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
     # delete all neurons if it is either nan or inf in any of the correlation matrices (row or column)
     neurons_tobe_deleted = activity_helper.merge_arrays(indices_delete_lst)
     print(f"Neurons union: {neurons_tobe_deleted}")
+    oracle_scores_filtered = [oracle_scores[i] for i in range(len(oracle_scores)) if i not in neurons_tobe_deleted]
 
     activity_extraction_extra_trc = np.delete(activity_extraction_extra, neurons_tobe_deleted, axis=0)
 
@@ -843,6 +846,7 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 pendindex += "_forall"
                 
             if not perturb: 
+                print(f"not perturb")
                 perturb_repeat = 1
                 hyp_names = [f"./mds-results-all/Rmax_{R_max}_D_2__{pendindex}_embed.mat"]
                 hypembed_names = [f"./mds-results-all/Rmax_{R_max}_D_2_microns__{pendindex}_embed_hypdist.mat"]
@@ -1129,6 +1133,14 @@ def run(session_info, scan_info, for_construction, R_max, embedding_dimension, r
                 summ.append(summ_rr)
 
             summ = np.array(summ)
+            if k == 0: 
+                oracle_dict = {"oracle_scores": oracle_scores_filtered, 
+                               "summ": summ
+                }
+                with open(f"./oracle_score_analysis/s{session_info}s{scan_info}.pkl", "wb") as file:
+                    pickle.dump(oracle_dict, file)
+
+                raise Exception("Oracle scores saved") 
 
             assert len(cell_indices_thisscan) == summ.shape[0]
             if k == 0: 
@@ -1441,7 +1453,7 @@ def benchmark_with_rnn(trial_index):
                             corr_with_c1.mean(), corr_with_c1_hypembed.mean(), corr_with_c1_eulembed.mean(), \
                             corr_with_c2.mean(), corr_with_c2_hypembed.mean(), corr_with_c2_eulembed.mean(), \
                         ])
-
+                
             summ = np.array(summ)
             medians = {}
             input_groups = [[0,1,4],[1,2,3],[4,5,6]]
